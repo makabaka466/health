@@ -39,6 +39,28 @@
             />
           </div>
         </el-form-item>
+
+        <el-form-item prop="role">
+          <div class="input-wrapper">
+            <el-select v-model="registerForm.role" placeholder="请选择注册身份" class="custom-input">
+              <el-option label="普通用户" value="user" />
+              <el-option label="管理员" value="admin" />
+            </el-select>
+          </div>
+        </el-form-item>
+
+        <el-form-item v-if="registerForm.role === 'admin'" prop="admin_register_key">
+          <div class="input-wrapper">
+            <el-input
+              v-model="registerForm.admin_register_key"
+              placeholder="请输入管理员注册密钥"
+              prefix-icon="Key"
+              show-password
+              clearable
+              class="custom-input"
+            />
+          </div>
+        </el-form-item>
         
         <el-form-item prop="email">
           <div class="input-wrapper">
@@ -177,7 +199,7 @@
 </template>
 
 <script setup>
-import { ref, reactive, computed, onMounted } from 'vue'
+import { ref, reactive, computed, onMounted, watch } from 'vue'
 import { useRouter } from 'vue-router'
 import { ElMessage } from 'element-plus'
 import { registerUser } from '../api/auth'
@@ -192,6 +214,8 @@ const privacyDialogVisible = ref(false)
 const registerForm = reactive({
   username: '',
   email: '',
+  role: 'user',
+  admin_register_key: '',
   password: '',
   confirmPassword: ''
 })
@@ -260,6 +284,19 @@ const registerRules = {
     { required: true, message: '请输入邮箱', trigger: 'blur' },
     { type: 'email', message: '请输入正确的邮箱格式', trigger: 'blur' }
   ],
+  role: [{ required: true, message: '请选择注册身份', trigger: 'change' }],
+  admin_register_key: [
+    {
+      validator: (_rule, value, callback) => {
+        if (registerForm.role === 'admin' && !value) {
+          callback(new Error('管理员注册必须填写密钥'))
+          return
+        }
+        callback()
+      },
+      trigger: 'blur'
+    }
+  ],
   password: [
     { required: true, message: '请输入密码', trigger: 'blur' },
     { min: 6, max: 20, message: '密码长度在 6 到 20 个字符', trigger: 'blur' },
@@ -290,6 +327,15 @@ const registerRules = {
     }
   ]
 }
+
+watch(
+  () => registerForm.role,
+  (newRole) => {
+    if (newRole !== 'admin') {
+      registerForm.admin_register_key = ''
+    }
+  }
+)
 
 const extractError = (error, fallback) => {
   const detail = error?.response?.data?.detail
@@ -322,7 +368,9 @@ const handleRegister = async () => {
     await registerUser({
       username: registerForm.username,
       email: registerForm.email,
-      password: registerForm.password
+      password: registerForm.password,
+      role: registerForm.role,
+      admin_register_key: registerForm.role === 'admin' ? registerForm.admin_register_key : null
     })
 
     ElMessage.success('注册成功！正在跳转到登录页面...')

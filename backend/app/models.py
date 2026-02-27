@@ -53,6 +53,10 @@ class HealthData(Base):
     blood_pressure_diastolic = Column(Integer, nullable=True)
     heart_rate = Column(Integer, nullable=True)
     blood_sugar = Column(Float, nullable=True)
+    record_type = Column(String(20), default="manual", nullable=False, index=True)
+    is_private = Column(Boolean, default=False, nullable=False)
+    health_data_file_name = Column(String(255), nullable=True)
+    health_data_file = Column(Text, nullable=True)
     recorded_at = Column(DateTime, server_default=func.now(), nullable=False)
 
     user = relationship("User", back_populates="health_records")

@@ -38,7 +38,6 @@
                 <el-option label="全部" value="" />
                 <el-option label="正常" value="active" />
                 <el-option label="禁用" value="disabled" />
-                <el-option label="待审核" value="pending" />
               </el-select>
             </el-col>
             <el-col :span="4">
@@ -46,7 +45,6 @@
                 <el-option label="全部" value="" />
                 <el-option label="普通用户" value="user" />
                 <el-option label="管理员" value="admin" />
-                <el-option label="超级管理员" value="super_admin" />
               </el-select>
             </el-col>
             <el-col :span="4">
@@ -101,36 +99,40 @@
           </el-table-column>
           <el-table-column prop="status" label="状态" width="100">
             <template #default="{ row }">
-              <el-tag :type="getStatusType(row.status)" size="small">
-                {{ getStatusText(row.status) }}
+              <el-tag :type="getStatusType(row.is_active)" size="small">
+                {{ getStatusText(row.is_active) }}
               </el-tag>
             </template>
           </el-table-column>
-          <el-table-column prop="loginTime" label="最后登录" width="160" />
-          <el-table-column prop="createdAt" label="注册时间" width="160" />
-          <el-table-column label="操作" width="200" fixed="right">
+          <el-table-column prop="updated_at" label="最后更新" width="180">
+            <template #default="{ row }">
+              {{ formatDate(row.updated_at) }}
+            </template>
+          </el-table-column>
+          <el-table-column prop="created_at" label="注册时间" width="180">
+            <template #default="{ row }">
+              {{ formatDate(row.created_at) }}
+            </template>
+          </el-table-column>
+          <el-table-column label="操作" width="250" fixed="right">
             <template #default="{ row }">
               <el-button type="text" size="small" @click="handleView(row)">
                 <el-icon><View /></el-icon>
                 查看
               </el-button>
-              <el-button type="text" size="small" @click="handleEdit(row)">
-                <el-icon><Edit /></el-icon>
-                编辑
-              </el-button>
               <el-button 
                 type="text" 
                 size="small" 
-                :class="{ 'danger-btn': row.status === 'active' }"
+                :class="{ 'danger-btn': row.is_active }"
                 @click="handleToggleStatus(row)"
               >
-                <el-icon v-if="row.status === 'active'"><Lock /></el-icon>
+                <el-icon v-if="row.is_active"><Lock /></el-icon>
                 <el-icon v-else><Unlock /></el-icon>
-                {{ row.status === 'active' ? '禁用' : '启用' }}
+                {{ row.is_active ? '禁用' : '启用' }}
               </el-button>
-              <el-button type="text" size="small" class="danger-btn" @click="handleDelete(row)">
-                <el-icon><Delete /></el-icon>
-                删除
+              <el-button type="text" size="small" class="danger-btn" @click="handleResetPassword(row)">
+                <el-icon><Refresh /></el-icon>
+                重置密码
               </el-button>
             </template>
           </el-table-column>
@@ -139,22 +141,41 @@
         <div class="pagination-wrapper">
           <el-pagination
             v-model:current-page="pagination.currentPage"
-            v-model:page-size="pagination.pageSize"
-            :page-sizes="[10, 20, 50, 100]"
             :total="pagination.total"
-            layout="total, sizes, prev, pager, next, jumper"
-            @size-change="handleSizeChange"
+            :page-size="pagination.pageSize"
+            layout="total, prev, pager, next, jumper"
             @current-change="handleCurrentChange"
           />
         </div>
       </el-card>
     </div>
+
+    <el-dialog v-model="detailVisible" title="用户信息" width="520px">
+      <el-descriptions :column="1" border v-if="currentUser">
+        <el-descriptions-item label="用户ID">{{ currentUser.id }}</el-descriptions-item>
+        <el-descriptions-item label="账号">{{ currentUser.username }}</el-descriptions-item>
+        <el-descriptions-item label="邮箱">{{ currentUser.email }}</el-descriptions-item>
+        <el-descriptions-item label="角色">{{ getRoleText(currentUser.role) }}</el-descriptions-item>
+        <el-descriptions-item label="状态">{{ getStatusText(currentUser.is_active) }}</el-descriptions-item>
+        <el-descriptions-item label="注册时间">{{ formatDate(currentUser.created_at) }}</el-descriptions-item>
+        <el-descriptions-item label="最后更新时间">{{ formatDate(currentUser.updated_at) }}</el-descriptions-item>
+      </el-descriptions>
+      <template #footer>
+        <el-button type="primary" @click="detailVisible = false">关闭</el-button>
+      </template>
+    </el-dialog>
   </div>
 </template>
 
 <script setup>
-import { ref, reactive } from 'vue'
+import { onMounted, reactive, ref } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
+import {
+  getAdminUserDetail,
+  getAdminUsers,
+  resetAdminUserPassword,
+  updateAdminUserStatus
+} from '../api/auth'
 
 const searchForm = reactive({
   keyword: '',
@@ -164,54 +185,14 @@ const searchForm = reactive({
 
 const pagination = reactive({
   currentPage: 1,
-  pageSize: 20,
+  pageSize: 12,
   total: 0
 })
 
-const users = ref([
-  {
-    id: 1,
-    username: 'admin',
-    email: 'admin@health.com',
-    role: 'super_admin',
-    status: 'active',
-    loginTime: '2024-01-15 14:30',
-    createdAt: '2024-01-01 10:00',
-    avatar: ''
-  },
-  {
-    id: 2,
-    username: 'zhangsan',
-    email: 'zhangsan@example.com',
-    role: 'user',
-    status: 'active',
-    loginTime: '2024-01-15 13:20',
-    createdAt: '2024-01-05 09:30',
-    avatar: ''
-  },
-  {
-    id: 3,
-    username: 'lisi',
-    email: 'lisi@example.com',
-    role: 'user',
-    status: 'disabled',
-    loginTime: '2024-01-14 16:45',
-    createdAt: '2024-01-03 14:20',
-    avatar: ''
-  },
-  {
-    id: 4,
-    username: 'wangwu',
-    email: 'wangwu@example.com',
-    role: 'admin',
-    status: 'pending',
-    loginTime: '2024-01-15 12:10',
-    createdAt: '2024-01-08 11:15',
-    avatar: ''
-  }
-])
-
-pagination.total = users.value.length
+const users = ref([])
+const detailVisible = ref(false)
+const currentUser = ref(null)
+const loading = ref(false)
 
 const getRoleType = (role) => {
   const typeMap = {
@@ -224,60 +205,80 @@ const getRoleType = (role) => {
 
 const getRoleText = (role) => {
   const textMap = {
-    'super_admin': '超级管理员',
     'admin': '管理员',
     'user': '普通用户'
   }
   return textMap[role] || '未知'
 }
 
-const getStatusType = (status) => {
+const getStatusType = (isActive) => {
   const typeMap = {
-    'active': 'success',
-    'disabled': 'danger',
-    'pending': 'warning'
+    true: 'success',
+    false: 'danger'
   }
-  return typeMap[status] || 'info'
+  return typeMap[isActive] || 'info'
 }
 
-const getStatusText = (status) => {
+const getStatusText = (isActive) => {
   const textMap = {
-    'active': '正常',
-    'disabled': '禁用',
-    'pending': '待审核'
+    true: '正常',
+    false: '禁用'
   }
-  return textMap[status] || '未知'
+  return textMap[isActive] || '未知'
+}
+
+const loadUsers = async () => {
+  loading.value = true
+  try {
+    const data = await getAdminUsers({
+      page: pagination.currentPage,
+      page_size: pagination.pageSize,
+      keyword: searchForm.keyword,
+      status: searchForm.status,
+      role: searchForm.role
+    })
+    users.value = data.items || []
+    pagination.total = data.total || 0
+  } catch (error) {
+    ElMessage.error(error.response?.data?.detail || '加载用户列表失败')
+  } finally {
+    loading.value = false
+  }
 }
 
 const handleSearch = () => {
-  ElMessage.success('搜索功能开发中...')
+  pagination.currentPage = 1
+  loadUsers()
 }
 
 const handleReset = () => {
   searchForm.keyword = ''
   searchForm.status = ''
   searchForm.role = ''
-  ElMessage.success('已重置搜索条件')
+  pagination.currentPage = 1
+  loadUsers()
 }
 
 const handleExport = () => {
-  ElMessage.success('导出功能开发中...')
+  ElMessage.info('导出功能暂未开放')
 }
 
 const handleRefresh = () => {
-  ElMessage.success('数据已刷新')
+  loadUsers()
 }
 
-const handleView = (row) => {
-  ElMessage.info(`查看用户: ${row.username}`)
-}
-
-const handleEdit = (row) => {
-  ElMessage.info(`编辑用户: ${row.username}`)
+const handleView = async (row) => {
+  try {
+    const detail = await getAdminUserDetail(row.id)
+    currentUser.value = detail
+    detailVisible.value = true
+  } catch (error) {
+    ElMessage.error(error.response?.data?.detail || '加载用户详情失败')
+  }
 }
 
 const handleToggleStatus = async (row) => {
-  const action = row.status === 'active' ? '禁用' : '启用'
+  const action = row.is_active ? '禁用' : '启用'
   try {
     await ElMessageBox.confirm(
       `确定要${action}用户 "${row.username}" 吗？`,
@@ -288,39 +289,45 @@ const handleToggleStatus = async (row) => {
         type: 'warning'
       }
     )
-    row.status = row.status === 'active' ? 'disabled' : 'active'
+    await updateAdminUserStatus(row.id, !row.is_active)
     ElMessage.success(`用户已${action}`)
+    await loadUsers()
   } catch {
     // 用户取消
   }
 }
 
-const handleDelete = async (row) => {
+const handleResetPassword = async (row) => {
   try {
     await ElMessageBox.confirm(
-      `确定要删除用户 "${row.username}" 吗？此操作不可恢复！`,
-      '警告',
+      `确定将用户 "${row.username}" 的密码重置为 123456 吗？`,
+      '重置密码',
       {
-        confirmButtonText: '确定删除',
+        confirmButtonText: '确定重置',
         cancelButtonText: '取消',
-        type: 'error'
+        type: 'warning'
       }
     )
-    ElMessage.success('用户已删除')
+    await resetAdminUserPassword(row.id)
+    ElMessage.success('密码已重置为 123456')
   } catch {
     // 用户取消
   }
-}
-
-const handleSizeChange = (size) => {
-  pagination.pageSize = size
-  ElMessage.success(`每页显示 ${size} 条`)
 }
 
 const handleCurrentChange = (page) => {
   pagination.currentPage = page
-  ElMessage.success(`当前第 ${page} 页`)
+  loadUsers()
 }
+
+const formatDate = (value) => {
+  if (!value) return '-'
+  return new Date(value).toLocaleString('zh-CN')
+}
+
+onMounted(() => {
+  loadUsers()
+})
 </script>
 
 <style scoped>

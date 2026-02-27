@@ -22,6 +22,7 @@ class Settings:
     ADMIN_USERNAME: str = os.getenv("ADMIN_USERNAME", "admin")
     ADMIN_EMAIL: str = os.getenv("ADMIN_EMAIL", "admin@health.com")
     ADMIN_PASSWORD: str = os.getenv("ADMIN_PASSWORD", "admin123")
+    ADMIN_REGISTER_KEY: str = os.getenv("ADMIN_REGISTER_KEY", "123")
     
     # API配置
     API_V1_STR: str = "/api"

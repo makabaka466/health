@@ -34,9 +34,9 @@
                 </el-button>
               </div>
               <div class="user-info">
-                <h2>{{ username }}</h2>
-                <p class="user-role">管理员</p>
-                <p class="user-email">admin@health.com</p>
+                <h2>{{ profileData.username || '用户' }}</h2>
+                <p class="user-role">{{ roleText }}</p>
+                <p class="user-email">{{ profileData.email || '-' }}</p>
               </div>
             </div>
           </el-card>
@@ -52,7 +52,7 @@
                 </div>
                 <div class="stat-content">
                   <span class="stat-label">注册时间</span>
-                  <span class="stat-value">2024-01-01</span>
+                  <span class="stat-value">{{ formatDate(profileData.created_at, true) }}</span>
                 </div>
               </div>
               
@@ -62,7 +62,7 @@
                 </div>
                 <div class="stat-content">
                   <span class="stat-label">健康记录</span>
-                  <span class="stat-value">156 条</span>
+                  <span class="stat-value">{{ stats.healthRecords }} 条</span>
                 </div>
               </div>
               
@@ -72,7 +72,7 @@
                 </div>
                 <div class="stat-content">
                   <span class="stat-label">AI咨询</span>
-                  <span class="stat-value">24 次</span>
+                  <span class="stat-value">{{ stats.aiConsultations }} 次</span>
                 </div>
               </div>
               
@@ -82,7 +82,7 @@
                 </div>
                 <div class="stat-content">
                   <span class="stat-label">提醒事项</span>
-                  <span class="stat-value">12 个</span>
+                  <span class="stat-value">{{ stats.reminders }} 个</span>
                 </div>
               </div>
             </div>
@@ -183,15 +183,32 @@
 </template>
 
 <script setup>
-import { ref, computed } from 'vue'
+import { computed, onMounted, ref } from 'vue'
+import { ElMessage } from 'element-plus'
+import { getCurrentUserProfile } from '../api/auth'
+import { healthApi } from '../api/health'
+import { aiApi } from '../api/ai'
 
-const username = computed(() => localStorage.getItem('username') || '用户')
 const userAvatar = ref('')
+const profileData = ref({
+  username: '',
+  email: '',
+  role: 'user',
+  created_at: null
+})
+
+const stats = ref({
+  healthRecords: 0,
+  aiConsultations: 0,
+  reminders: 0
+})
+
+const roleText = computed(() => (profileData.value.role === 'admin' ? '管理员' : '普通用户'))
 
 const userForm = ref({
-  username: username.value,
+  username: '',
   realName: '',
-  email: 'admin@health.com',
+  email: '',
   phone: '',
   gender: 'male',
   birthday: '',
@@ -203,6 +220,43 @@ const settings = ref({
   aiNotification: true,
   systemUpdate: false,
   emailNotification: true
+})
+
+const formatDate = (value, dateOnly = false) => {
+  if (!value) return '-'
+  const date = new Date(value)
+  return dateOnly ? date.toLocaleDateString('zh-CN') : date.toLocaleString('zh-CN')
+}
+
+const loadProfile = async () => {
+  try {
+    const user = await getCurrentUserProfile()
+    profileData.value = user
+    userForm.value.username = user.username || ''
+    userForm.value.email = user.email || ''
+  } catch (error) {
+    ElMessage.error(error.response?.data?.detail || '加载个人信息失败')
+  }
+}
+
+const loadStats = async () => {
+  try {
+    const [summary, chatHistory] = await Promise.all([
+      healthApi.getSummary(),
+      aiApi.getChatHistory()
+    ])
+
+    stats.value.healthRecords = summary?.total_records || 0
+    stats.value.aiConsultations = Array.isArray(chatHistory) ? chatHistory.length : 0
+    stats.value.reminders = summary?.records_this_month || 0
+  } catch (error) {
+    ElMessage.error(error.response?.data?.detail || '加载账户统计失败')
+  }
+}
+
+onMounted(() => {
+  loadProfile()
+  loadStats()
 })
 </script>
 

@@ -17,7 +17,7 @@ class AuthService:
         self.db = db
 
     async def register(self, user: schemas.UserCreate) -> models.User:
-        """注册普通用户：校验唯一性、分配 user 身份并持久化。"""
+        """注册用户：支持普通用户与管理员（需管理员密钥）注册。"""
         existing_user = self.db.query(models.User).filter(models.User.username == user.username).first()
         if existing_user:
             raise ValueError("用户名已存在")
@@ -26,13 +26,18 @@ class AuthService:
         if existing_email:
             raise ValueError("邮箱已存在")
 
-        role_ref = self._get_or_create_role("user", "普通用户")
+        requested_role = "admin" if user.role == "admin" else "user"
+        if requested_role == "admin" and user.admin_register_key != settings.ADMIN_REGISTER_KEY:
+            raise ValueError("管理员密钥错误")
+
+        role_description = "系统管理员" if requested_role == "admin" else "普通用户"
+        role_ref = self._get_or_create_role(requested_role, role_description)
 
         db_user = models.User(
             username=user.username,
             email=user.email,
             password_hash=self.hash_password(user.password),
-            role="user",
+            role=requested_role,
             role_id=role_ref.id,
             is_active=True,
         )
@@ -56,7 +61,7 @@ class AuthService:
         """管理员认证：在普通认证成功后，额外校验身份是否为 admin。"""
         user = await self.authenticate(username, password)
         user_role = user.role_ref.name if user and user.role_ref else user.role if user else None
-        if not user or user_role != "admin":
+        if not user or user_role not in {"admin", "super_admin"}:
             return None
         return user
 

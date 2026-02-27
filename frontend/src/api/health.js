@@ -10,7 +10,7 @@ const api = axios.create({
 // 添加请求拦截器，自动添加token
 api.interceptors.request.use(
   (config) => {
-    const token = localStorage.getItem('token')
+    const token = localStorage.getItem('token') || localStorage.getItem('adminToken')
     if (token) {
       config.headers.Authorization = `Bearer ${token}`
     }
@@ -41,43 +41,36 @@ api.interceptors.response.use(
 export const healthApi = {
   // 获取健康数据记录
   async getRecords(params = {}) {
-    const { data } = await api.get('/health/records', { params })
-    return data
+    return await api.get('/health/records', { params })
   },
 
   // 创建健康数据记录
   async createRecord(recordData) {
-    const { data } = await api.post('/health/records', recordData)
-    return data
+    return await api.post('/health/records', recordData)
   },
 
   // 获取单个健康数据记录
   async getRecord(recordId) {
-    const { data } = await api.get(`/health/records/${recordId}`)
-    return data
+    return await api.get(`/health/records/${recordId}`)
   },
 
   // 更新健康数据记录
   async updateRecord(recordId, recordData) {
-    const { data } = await api.put(`/health/records/${recordId}`, recordData)
-    return data
+    return await api.put(`/health/records/${recordId}`, recordData)
   },
 
   // 删除健康数据记录
   async deleteRecord(recordId) {
-    const { data } = await api.delete(`/health/records/${recordId}`)
-    return data
+    return await api.delete(`/health/records/${recordId}`)
   },
 
   // 获取健康数据摘要
   async getSummary() {
-    const { data } = await api.get('/health/summary')
-    return data
+    return await api.get('/health/summary')
   },
 
   // 分析健康数据
   async analyzeData(analysisRequest = {}) {
-    const { data } = await api.post('/health/analyze', analysisRequest)
-    return data
+    return await api.post('/health/analyze', analysisRequest)
   }
 }

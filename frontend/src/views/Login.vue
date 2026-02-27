@@ -243,14 +243,23 @@ const handleLogin = async () => {
     loading.value = true
 
     const payload = await loginUser(loginForm)
-    localStorage.setItem('token', payload.access_token)
-    localStorage.setItem('username', payload.username || loginForm.username)
-    localStorage.setItem('userRole', payload.role || 'user')
-    localStorage.removeItem('adminToken')
-    localStorage.removeItem('adminUsername')
+    const role = payload.role || 'user'
+    localStorage.setItem('userRole', role)
+
+    if (role === 'admin') {
+      localStorage.setItem('adminToken', payload.access_token)
+      localStorage.setItem('adminUsername', payload.username || loginForm.username)
+      localStorage.removeItem('token')
+      localStorage.removeItem('username')
+    } else {
+      localStorage.setItem('token', payload.access_token)
+      localStorage.setItem('username', payload.username || loginForm.username)
+      localStorage.removeItem('adminToken')
+      localStorage.removeItem('adminUsername')
+    }
 
     ElMessage.success('登录成功')
-    router.push('/dashboard')
+    router.push(role === 'admin' ? '/admin' : '/dashboard')
   } catch (error) {
     ElMessage.error(extractError(error, '登录失败，请重试'))
   } finally {

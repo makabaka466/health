@@ -37,21 +37,22 @@
 
     <div class="home-recommendations">
       <h2 class="section-title">健康知识推送</h2>
-      <div v-if="pushedArticles.length" class="recommend-grid">
-        <el-card
-          v-for="article in pushedArticles"
-          :key="article.id"
-          class="recommend-card"
-          shadow="hover"
-          @click="goArticle(article.id)"
-        >
-          <div class="recommend-header">
-            <el-tag size="small" effect="plain">{{ article.category }}</el-tag>
-            <span class="recommend-meta">{{ article.view_count }} 阅读</span>
-          </div>
-          <h3>{{ article.title }}</h3>
-          <p>{{ article.summary }}</p>
-        </el-card>
+      <div v-if="pushedArticles.length" class="recommend-carousel-wrap">
+        <el-carousel :interval="5000" trigger="click" arrow="always" height="260px">
+          <el-carousel-item v-for="article in pushedArticles" :key="article.id">
+            <div class="recommend-slide" @click="goArticle(article.id)">
+              <div class="slide-overlay"></div>
+              <div class="slide-content">
+                <div class="recommend-header">
+                  <el-tag size="small" effect="dark">{{ article.category }}</el-tag>
+                  <span class="recommend-meta">{{ article.view_count }} 阅读</span>
+                </div>
+                <h3>{{ article.title }}</h3>
+                <p>{{ article.summary }}</p>
+              </div>
+            </div>
+          </el-carousel-item>
+        </el-carousel>
       </div>
       <el-card v-else class="recommend-empty" shadow="never">
         <p>暂无推送文章，去知识中心看看最新内容</p>
@@ -306,7 +307,7 @@ const loadRecommendations = async () => {
       if (seen.has(item.id)) return false
       seen.add(item.id)
       return true
-    }).slice(0, 6)
+    }).slice(0, 5)
   } catch {
     pushedArticles.value = []
   }
@@ -474,21 +475,34 @@ onMounted(() => {
   margin-bottom: 32px;
 }
 
-.recommend-grid {
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
-  gap: 16px;
+.recommend-carousel-wrap {
+  border-radius: 16px;
+  overflow: hidden;
+  box-shadow: 0 12px 28px rgba(15, 23, 42, 0.14);
 }
 
-.recommend-card {
-  border-radius: 14px;
-  cursor: pointer;
-  transition: all 0.25s ease;
+.recommend-slide {
+  position: relative;
+  width: 100%;
   height: 100%;
+  padding: 28px;
+  cursor: pointer;
+  background: linear-gradient(120deg, #2f6fd6 0%, #36a3f5 50%, #5ec7b9 100%);
+  display: flex;
+  align-items: flex-end;
 }
 
-.recommend-card:hover {
-  transform: translateY(-4px);
+.slide-overlay {
+  position: absolute;
+  inset: 0;
+  background: radial-gradient(circle at 85% 25%, rgba(255, 255, 255, 0.28), transparent 40%);
+}
+
+.slide-content {
+  position: relative;
+  z-index: 1;
+  max-width: 760px;
+  color: #ffffff;
 }
 
 .recommend-header {
@@ -498,29 +512,38 @@ onMounted(() => {
   margin-bottom: 10px;
 }
 
-.recommend-card h3 {
+.slide-content h3 {
   margin: 0 0 8px;
-  font-size: 16px;
-  color: #1e293b;
-  min-height: 44px;
+  font-size: 30px;
+  color: #ffffff;
   line-height: 1.4;
+  text-shadow: 0 4px 16px rgba(0, 0, 0, 0.25);
 }
 
-.recommend-card p {
+.slide-content p {
   margin: 0;
-  font-size: 13px;
-  color: #64748b;
+  font-size: 15px;
+  color: rgba(255, 255, 255, 0.95);
   line-height: 1.5;
-  line-clamp: 3;
+  line-clamp: 2;
   display: -webkit-box;
-  -webkit-line-clamp: 3;
+  -webkit-line-clamp: 2;
   -webkit-box-orient: vertical;
   overflow: hidden;
 }
 
 .recommend-meta {
-  font-size: 12px;
-  color: #94a3b8;
+  font-size: 13px;
+  color: rgba(255, 255, 255, 0.9);
+}
+
+.recommend-carousel-wrap :deep(.el-carousel__button) {
+  width: 18px;
+  border-radius: 999px;
+}
+
+.recommend-carousel-wrap :deep(.el-carousel__arrow) {
+  background: rgba(0, 0, 0, 0.25);
 }
 
 .recommend-empty {
@@ -830,6 +853,15 @@ onMounted(() => {
   
   .action-cards {
     grid-template-columns: 1fr;
+  }
+
+  .recommend-slide {
+    padding: 20px;
+    height: 230px;
+  }
+
+  .slide-content h3 {
+    font-size: 22px;
   }
   
   .overview-grid {

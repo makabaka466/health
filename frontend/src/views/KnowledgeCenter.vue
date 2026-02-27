@@ -29,8 +29,8 @@
     </div>
     
     <div class="content-section">
-      <el-row :gutter="24">
-        <el-col :xs="24" :sm="8" :md="6" :lg="5">
+      <el-row :gutter="12">
+        <el-col :xs="24" :sm="9" :md="7" :lg="6">
           <div class="category-sidebar">
             <div class="sidebar-header">
               <h3>知识分类</h3>
@@ -57,7 +57,7 @@
           </div>
         </el-col>
         
-        <el-col :xs="24" :sm="16" :md="18" :lg="19">
+        <el-col :xs="24" :sm="15" :md="17" :lg="18">
           <div class="knowledge-content">
             <div class="content-header">
               <div class="breadcrumb">
@@ -67,15 +67,21 @@
                 <el-icon><ArrowRight /></el-icon>
                 <span>{{ getCurrentCategoryName() }}</span>
               </div>
-              <div class="view-options">
-                <el-radio-group v-model="viewMode" size="small">
-                  <el-radio-button label="grid">
-                    <el-icon><Grid /></el-icon>
-                  </el-radio-button>
-                  <el-radio-button label="list">
-                    <el-icon><List /></el-icon>
-                  </el-radio-button>
-                </el-radio-group>
+              <div class="content-header-tip">精选健康知识，持续更新</div>
+            </div>
+
+            <div class="content-stats">
+              <div class="stats-chip">
+                <span class="chip-label">当前分类</span>
+                <span class="chip-value">{{ getCurrentCategoryName() }}</span>
+              </div>
+              <div class="stats-chip">
+                <span class="chip-label">文章总数</span>
+                <span class="chip-value">{{ totalItems }}</span>
+              </div>
+              <div class="stats-chip">
+                <span class="chip-label">每页显示</span>
+                <span class="chip-value">9 篇</span>
               </div>
             </div>
             
@@ -164,11 +170,9 @@
               <div class="pagination-container">
                 <el-pagination
                   v-model:current-page="currentPage"
-                  v-model:page-size="pageSize"
-                  :page-sizes="[12, 24, 48]"
+                  :page-size="pageSize"
                   :total="totalItems"
-                  layout="total, sizes, prev, pager, next, jumper"
-                  @size-change="handleSizeChange"
+                  layout="total, prev, pager, next"
                   @current-change="handleCurrentChange"
                 />
               </div>
@@ -193,7 +197,7 @@ const selectedCategory = ref('all')
 const viewMode = ref('grid')
 const loading = ref(false)
 const currentPage = ref(1)
-const pageSize = ref(12)
+const pageSize = ref(9)
 const totalItems = ref(0)
 const knowledgeItems = ref([])
 
@@ -291,12 +295,6 @@ const loadReadHistory = async () => {
   }
 }
 
-const handleSizeChange = (size) => {
-  pageSize.value = size
-  currentPage.value = 1
-  loadKnowledgeItems()
-}
-
 const handleCurrentChange = (page) => {
   currentPage.value = page
   loadKnowledgeItems()
@@ -317,6 +315,7 @@ onMounted(() => {
   max-width: 1680px;
   width: 100%;
   margin: 0 auto;
+  padding-bottom: 10px;
 }
 
 .page-header {
@@ -412,18 +411,29 @@ onMounted(() => {
 }
 
 .category-sidebar {
-  background: white;
+  background: linear-gradient(180deg, #ffffff 0%, #f8fbff 100%);
   border-radius: 16px;
-  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.1);
+  box-shadow: 0 12px 32px rgba(15, 23, 42, 0.08);
   overflow: hidden;
-  min-height: 100%;
+  /* min-height: 100%; */
+  min-width: 100%;
   display: flex;
   flex-direction: column;
+  border: 1px solid #eaf2ff;
 }
 
 .sidebar-header {
   padding: 20px;
   border-bottom: 1px solid #e2e8f0;
+}
+
+.content-header-tip {
+  font-size: 13px;
+  color: #6b7a90;
+  background: #f4f8ff;
+  border: 1px solid #e3ecfb;
+  border-radius: 999px;
+  padding: 6px 12px;
 }
 
 .sidebar-header h3 {
@@ -434,7 +444,7 @@ onMounted(() => {
 }
 
 .category-list {
-  padding: 16px;
+  padding: 12px;
   flex: 1;
 }
 
@@ -442,7 +452,7 @@ onMounted(() => {
   display: flex;
   align-items: center;
   gap: 12px;
-  padding: 16px;
+  padding: 14px;
   cursor: pointer;
   border-radius: 12px;
   transition: all 0.3s ease;
@@ -450,11 +460,11 @@ onMounted(() => {
 }
 
 .category-item:hover {
-  background: #f8fafc;
+  background: #f4f8ff;
 }
 
 .category-item.active {
-  background: #e3f2fd;
+  background: linear-gradient(135deg, #e8f3ff 0%, #f0f7ff 100%);
   border-left: 3px solid #409EFF;
 }
 
@@ -483,22 +493,51 @@ onMounted(() => {
 }
 
 .knowledge-content {
-  background: white;
+  background: linear-gradient(180deg, #ffffff 0%, #fcfdff 100%);
   border-radius: 16px;
-  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.1);
-  padding: 24px;
+  box-shadow: 0 14px 36px rgba(15, 23, 42, 0.08);
+  padding: 24px 28px;
   min-height: 100%;
   display: flex;
   flex-direction: column;
+  border: 1px solid #eaf2ff;
 }
 
 .content-header {
   display: flex;
   justify-content: space-between;
   align-items: center;
-  margin-bottom: 24px;
+  margin-bottom: 18px;
   padding-bottom: 16px;
   border-bottom: 1px solid #e2e8f0;
+}
+
+.content-stats {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 12px;
+  margin-bottom: 24px;
+}
+
+.stats-chip {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 12px 14px;
+  border-radius: 12px;
+  background: linear-gradient(135deg, #f4f9ff 0%, #f9fbff 100%);
+  border: 1px solid #e6efff;
+}
+
+.chip-label {
+  font-size: 12px;
+  color: #6b7a90;
+}
+
+.chip-value {
+  font-size: 16px;
+  font-weight: 600;
+  color: #1d4f8f;
 }
 
 .breadcrumb {
@@ -511,8 +550,8 @@ onMounted(() => {
 
 .knowledge-grid {
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
-  gap: 24px;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 16px;
   margin-bottom: 32px;
   align-items: stretch;
 }
@@ -525,6 +564,7 @@ onMounted(() => {
   height: 100%;
   display: flex;
   flex-direction: column;
+  border: 1px solid #e8f1ff;
 }
 
 :deep(.knowledge-card .el-card__body) {
@@ -536,7 +576,7 @@ onMounted(() => {
 
 .knowledge-card:hover {
   transform: translateY(-4px);
-  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.12);
+  box-shadow: 0 14px 28px rgba(58, 113, 189, 0.18);
 }
 
 .card-image {
@@ -613,10 +653,13 @@ onMounted(() => {
 .knowledge-list-item {
   cursor: pointer;
   transition: all 0.3s ease;
+  border-radius: 14px;
+  border: 1px solid #e7efff;
 }
 
 .knowledge-list-item:hover {
   transform: translateX(4px);
+  box-shadow: 0 10px 24px rgba(58, 113, 189, 0.14);
 }
 
 .list-content {
@@ -689,6 +732,13 @@ onMounted(() => {
   margin-top: 32px;
 }
 
+.pagination-container :deep(.el-pagination) {
+  padding: 12px 16px;
+  border-radius: 999px;
+  background: #f6f9ff;
+  border: 1px solid #e4ecfb;
+}
+
 .loading-container,
 .empty-container {
   display: flex;
@@ -717,9 +767,13 @@ onMounted(() => {
   .search-input {
     width: 100%;
   }
+
+  .content-stats {
+    grid-template-columns: 1fr;
+  }
   
   .knowledge-grid {
-    grid-template-columns: 1fr;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
   }
   
   .list-content {
@@ -729,6 +783,18 @@ onMounted(() => {
   .list-image {
     width: 100%;
     height: 160px;
+  }
+}
+
+@media (max-width: 992px) {
+  .knowledge-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+@media (max-width: 576px) {
+  .knowledge-grid {
+    grid-template-columns: 1fr;
   }
 }
 </style>

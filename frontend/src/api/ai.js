@@ -41,37 +41,31 @@ api.interceptors.response.use(
 export const aiApi = {
   // 发送消息给AI助手
   async sendMessage(messageData) {
-    const { data } = await api.post('/ai/chat', messageData)
-    return data
+    return await api.post('/ai/chat', messageData)
   },
 
   // 获取对话历史
   async getChatHistory() {
-    const { data } = await api.get('/ai/chat/history')
-    return data
+    return await api.get('/ai/chat/history')
   },
 
   // 获取特定对话的消息
   async getChatMessages(chatId) {
-    const { data } = await api.get(`/ai/chat/${chatId}/messages`)
-    return data
+    return await api.get(`/ai/chat/${chatId}/messages`)
   },
 
   // 删除对话
   async deleteChat(chatId) {
-    const { data } = await api.delete(`/ai/chat/${chatId}`)
-    return data
+    return await api.delete(`/ai/chat/${chatId}`)
   },
 
   // 获取健康建议
   async getHealthRecommendations(userId) {
-    const { data } = await api.get(`/ai/recommendations/${userId}`)
-    return data
+    return await api.get(`/ai/recommendations/${userId}`)
   },
 
   // 分析健康数据
   async analyzeHealthData(payload) {
-    const { data } = await api.post('/ai/analyze', payload)
-    return data
+    return await api.post('/ai/analyze', payload)
   }
 }

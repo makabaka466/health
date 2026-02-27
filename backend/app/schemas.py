@@ -9,6 +9,8 @@ class UserBase(BaseModel):
 
 class UserCreate(UserBase):
     password: str
+    role: str = "user"
+    admin_register_key: Optional[str] = None
 
 class UserResponse(UserBase):
     id: int
@@ -18,6 +20,26 @@ class UserResponse(UserBase):
     
     class Config:
         from_attributes = True
+
+
+class AdminUserResponse(BaseModel):
+    username: str
+    email: str
+    id: int
+    role: str
+    is_active: bool
+    created_at: datetime
+    updated_at: datetime
+
+    class Config:
+        from_attributes = True
+
+
+class AdminUserListResponse(BaseModel):
+    items: List[AdminUserResponse]
+    total: int
+    page: int
+    page_size: int
 
 
 ARTICLE_CATEGORIES = [
@@ -101,6 +123,10 @@ class HealthDataBase(BaseModel):
     blood_pressure_diastolic: Optional[int] = None
     heart_rate: Optional[int] = None
     blood_sugar: Optional[float] = None
+    record_type: str = "manual"
+    is_private: bool = False
+    health_data_file_name: Optional[str] = None
+    health_data_file: Optional[str] = None
 
 class HealthDataCreate(HealthDataBase):
     recorded_at: Optional[datetime] = None

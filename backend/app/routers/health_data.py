@@ -5,11 +5,32 @@ from datetime import datetime, date
 
 from app.database import get_db
 from app import models, schemas
-from app.services.auth_service import AuthService
 from app.routers.auth import get_current_user
 
 
 router = APIRouter()
+
+
+def _normalize_pdf_file(file_value: Optional[str]) -> Optional[str]:
+    if not file_value:
+        return None
+
+    file_value = file_value.strip()
+    if not file_value:
+        return None
+
+    allowed_prefixes = (
+        "data:application/pdf;base64,",
+        "data:application/octet-stream;base64,",
+    )
+    if not file_value.startswith(allowed_prefixes):
+        raise HTTPException(status_code=400, detail="仅支持 PDF 格式文件")
+
+    # 避免单条记录文件过大导致数据库膨胀（约 6MB base64）
+    if len(file_value) > 8_000_000:
+        raise HTTPException(status_code=400, detail="PDF 文件过大，请压缩后再上传")
+
+    return file_value
 
 
 @router.post("/records", response_model=schemas.HealthDataResponse)
@@ -19,6 +40,9 @@ async def create_health_record(
     current_user: models.User = Depends(get_current_user)
 ):
     """创建健康数据记录"""
+    normalized_file = _normalize_pdf_file(health_data.health_data_file)
+    record_type = "pdf" if normalized_file else "manual"
+
     db_record = models.HealthData(
         user_id=current_user.id,
         weight=health_data.weight,
@@ -27,6 +51,10 @@ async def create_health_record(
         blood_pressure_diastolic=health_data.blood_pressure_diastolic,
         heart_rate=health_data.heart_rate,
         blood_sugar=health_data.blood_sugar,
+        record_type=record_type,
+        is_private=True if record_type == "pdf" else health_data.is_private,
+        health_data_file_name=health_data.health_data_file_name,
+        health_data_file=normalized_file,
         recorded_at=health_data.recorded_at or datetime.utcnow()
     )
     
@@ -94,6 +122,14 @@ async def update_health_record(
     
     # 更新字段
     update_data = health_data.dict(exclude_unset=True)
+    if "health_data_file" in update_data:
+        update_data["health_data_file"] = _normalize_pdf_file(update_data["health_data_file"])
+
+    has_file = bool(update_data.get("health_data_file", record.health_data_file))
+    update_data["record_type"] = "pdf" if has_file else "manual"
+    if update_data["record_type"] == "pdf" and "is_private" not in update_data:
+        update_data["is_private"] = True
+
     for field, value in update_data.items():
         setattr(record, field, value)
     

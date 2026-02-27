@@ -131,19 +131,19 @@ router.beforeEach((to, from, next) => {
   }
   
   // 检查是否需要管理员权限
-  if (to.meta.requiresAdmin && !adminToken && userRole !== 'admin') {
+  if (to.meta.requiresAdmin && !adminToken) {
     next('/admin/login')
     return
   }
   
   // 普通用户访问管理员页面
-  if (to.path.startsWith('/admin') && userRole !== 'admin') {
+  if (to.path.startsWith('/admin') && !adminToken) {
     next('/admin/login')
     return
   }
   
   // 管理员访问普通用户页面
-  if (!to.path.startsWith('/admin') && userRole === 'admin') {
+  if (!to.path.startsWith('/admin') && userRole === 'admin' && adminToken) {
     next('/admin')
     return
   }
