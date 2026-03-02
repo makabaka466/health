@@ -1,0 +1,185 @@
+{
+	"compiler": {
+		"version": "0.8.19+commit.7dd6d404"
+	},
+	"language": "Solidity",
+	"output": {
+		"abi": [
+			{
+				"anonymous": false,
+				"inputs": [
+					{
+						"indexed": true,
+						"internalType": "address",
+						"name": "user",
+						"type": "address"
+					},
+					{
+						"indexed": false,
+						"internalType": "string",
+						"name": "oldNickname",
+						"type": "string"
+					},
+					{
+						"indexed": false,
+						"internalType": "string",
+						"name": "newNickname",
+						"type": "string"
+					},
+					{
+						"indexed": false,
+						"internalType": "uint256",
+						"name": "timestamp",
+						"type": "uint256"
+					}
+				],
+				"name": "NicknameUpdated",
+				"type": "event"
+			},
+			{
+				"anonymous": false,
+				"inputs": [
+					{
+						"indexed": true,
+						"internalType": "address",
+						"name": "user",
+						"type": "address"
+					},
+					{
+						"indexed": false,
+						"internalType": "string",
+						"name": "nickname",
+						"type": "string"
+					},
+					{
+						"indexed": false,
+						"internalType": "uint256",
+						"name": "timestamp",
+						"type": "uint256"
+					}
+				],
+				"name": "UserRegistered",
+				"type": "event"
+			},
+			{
+				"inputs": [],
+				"name": "getMyProfile",
+				"outputs": [
+					{
+						"internalType": "string",
+						"name": "nickname",
+						"type": "string"
+					},
+					{
+						"internalType": "uint256",
+						"name": "createdAt",
+						"type": "uint256"
+					},
+					{
+						"internalType": "bool",
+						"name": "exists",
+						"type": "bool"
+					}
+				],
+				"stateMutability": "view",
+				"type": "function"
+			},
+			{
+				"inputs": [
+					{
+						"internalType": "address",
+						"name": "userAddress",
+						"type": "address"
+					}
+				],
+				"name": "isRegistered",
+				"outputs": [
+					{
+						"internalType": "bool",
+						"name": "",
+						"type": "bool"
+					}
+				],
+				"stateMutability": "view",
+				"type": "function"
+			},
+			{
+				"inputs": [
+					{
+						"internalType": "string",
+						"name": "nickname",
+						"type": "string"
+					}
+				],
+				"name": "register",
+				"outputs": [],
+				"stateMutability": "nonpayable",
+				"type": "function"
+			},
+			{
+				"inputs": [
+					{
+						"internalType": "string",
+						"name": "newNickname",
+						"type": "string"
+					}
+				],
+				"name": "updateNickname",
+				"outputs": [],
+				"stateMutability": "nonpayable",
+				"type": "function"
+			}
+		],
+		"devdoc": {
+			"details": "最小化用户注册流程示例（学习版） 目的：帮助你快速理解“注册 -> 更新资料 -> 查询”的完整链上调用流程",
+			"kind": "dev",
+			"methods": {
+				"getMyProfile()": {
+					"details": "查询自己的资料"
+				},
+				"isRegistered(address)": {
+					"details": "查询任意地址是否已注册（用于演示）"
+				},
+				"register(string)": {
+					"details": "注册 要求：当前地址未注册，昵称非空"
+				},
+				"updateNickname(string)": {
+					"details": "更新昵称"
+				}
+			},
+			"title": "SimpleUserFlow",
+			"version": 1
+		},
+		"userdoc": {
+			"kind": "user",
+			"methods": {},
+			"version": 1
+		}
+	},
+	"settings": {
+		"compilationTarget": {
+			"SimpleUserFlow.sol": "SimpleUserFlow"
+		},
+		"evmVersion": "paris",
+		"libraries": {},
+		"metadata": {
+			"bytecodeHash": "ipfs"
+		},
+		"optimizer": {
+			"enabled": false,
+			"runs": 200
+		},
+		"remappings": []
+	},
+	"sources": {
+		"SimpleUserFlow.sol": {
+			"keccak256": "0xde1ef28f7c8eb6637de33fc040850f4e0e099fd62203d05c0c4d6ed94d44b212",
+			"license": "MIT",
+			"urls": [
+				"bzz-raw://068b30ce85ed9721ac00eace06f34b9906efd2d3ba996ddef83b0c9160555ffe",
+				"dweb:/ipfs/QmWo8212tG8WwyUqLAxqLJKFXG8sTzaiUUkCnNRiW2kdi1"
+			]
+		}
+	},
+	"version": 1
+}

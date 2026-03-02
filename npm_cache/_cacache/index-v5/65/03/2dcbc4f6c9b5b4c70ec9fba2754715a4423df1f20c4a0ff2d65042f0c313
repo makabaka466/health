@@ -1,0 +1,2 @@
+
+1768047c2756dabe0857b8c1d32ea6177bf311a0	{"key":"make-fetch-happen:request-cache:http://registry.npm.taobao.org/@noble%2fhashes","integrity":null,"time":1772414738209,"size":"262","metadata":{"time":1772414738208,"url":"http://registry.npm.taobao.org/@noble%2fhashes","reqHeaders":{"accept":"application/json"},"resHeaders":{"content-type":"text/html","date":"Mon, 02 Mar 2026 01:25:38 GMT","location":"https://registry.npmmirror.com/@noble%2fhashes"},"options":{"compress":true},"status":301}}

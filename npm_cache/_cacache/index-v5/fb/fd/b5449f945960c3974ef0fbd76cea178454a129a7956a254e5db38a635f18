@@ -1,0 +1,2 @@
+
+1f22579be4aeab0dce92ab2346e42f54551b9323	{"key":"make-fetch-happen:request-cache:http://registry.npm.taobao.org/web3-eth","integrity":null,"time":1772414682828,"size":"262","metadata":{"time":1772414682828,"url":"http://registry.npm.taobao.org/web3-eth","reqHeaders":{"accept":"application/json"},"resHeaders":{"content-type":"text/html","date":"Mon, 02 Mar 2026 01:24:42 GMT","location":"https://registry.npmmirror.com/web3-eth"},"options":{"compress":true},"status":301}}

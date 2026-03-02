@@ -1,0 +1,2 @@
+
+592f17e43a1693fcc1f5ae69fa47d2ec2f866d90	{"key":"make-fetch-happen:request-cache:http://registry.npm.taobao.org/web3-errors","integrity":null,"time":1772414682882,"size":"262","metadata":{"time":1772414682882,"url":"http://registry.npm.taobao.org/web3-errors","reqHeaders":{"accept":"application/json"},"resHeaders":{"content-type":"text/html","date":"Mon, 02 Mar 2026 01:24:42 GMT","location":"https://registry.npmmirror.com/web3-errors"},"options":{"compress":true},"status":301}}

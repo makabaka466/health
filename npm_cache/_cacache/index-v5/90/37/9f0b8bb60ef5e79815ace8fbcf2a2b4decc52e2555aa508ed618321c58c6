@@ -1,0 +1,2 @@
+
+483a723a8280097f4c12484662d4ee85869a349c	{"key":"make-fetch-happen:request-cache:http://registry.npm.taobao.org/isomorphic-ws","integrity":null,"time":1772414690042,"size":"262","metadata":{"time":1772414690042,"url":"http://registry.npm.taobao.org/isomorphic-ws","reqHeaders":{"accept":"application/json"},"resHeaders":{"content-type":"text/html","date":"Mon, 02 Mar 2026 01:24:49 GMT","location":"https://registry.npmmirror.com/isomorphic-ws"},"options":{"compress":true},"status":301}}

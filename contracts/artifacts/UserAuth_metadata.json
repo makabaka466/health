@@ -1,0 +1,661 @@
+{
+	"compiler": {
+		"version": "0.8.30+commit.73712a01"
+	},
+	"language": "Solidity",
+	"output": {
+		"abi": [
+			{
+				"anonymous": false,
+				"inputs": [
+					{
+						"indexed": true,
+						"internalType": "address",
+						"name": "userAddress",
+						"type": "address"
+					},
+					{
+						"indexed": false,
+						"internalType": "uint256",
+						"name": "timestamp",
+						"type": "uint256"
+					}
+				],
+				"name": "PasswordUpdated",
+				"type": "event"
+			},
+			{
+				"anonymous": false,
+				"inputs": [
+					{
+						"indexed": true,
+						"internalType": "address",
+						"name": "userAddress",
+						"type": "address"
+					},
+					{
+						"indexed": false,
+						"internalType": "uint256",
+						"name": "timestamp",
+						"type": "uint256"
+					}
+				],
+				"name": "UserDeactivated",
+				"type": "event"
+			},
+			{
+				"anonymous": false,
+				"inputs": [
+					{
+						"indexed": true,
+						"internalType": "address",
+						"name": "userAddress",
+						"type": "address"
+					},
+					{
+						"indexed": false,
+						"internalType": "uint256",
+						"name": "timestamp",
+						"type": "uint256"
+					}
+				],
+				"name": "UserLoggedIn",
+				"type": "event"
+			},
+			{
+				"anonymous": false,
+				"inputs": [
+					{
+						"indexed": true,
+						"internalType": "address",
+						"name": "userAddress",
+						"type": "address"
+					},
+					{
+						"indexed": false,
+						"internalType": "enum UserAuth.ProfileStatus",
+						"name": "oldStatus",
+						"type": "uint8"
+					},
+					{
+						"indexed": false,
+						"internalType": "enum UserAuth.ProfileStatus",
+						"name": "newStatus",
+						"type": "uint8"
+					},
+					{
+						"indexed": false,
+						"internalType": "uint256",
+						"name": "timestamp",
+						"type": "uint256"
+					}
+				],
+				"name": "UserProfileStatusChanged",
+				"type": "event"
+			},
+			{
+				"anonymous": false,
+				"inputs": [
+					{
+						"indexed": true,
+						"internalType": "address",
+						"name": "userAddress",
+						"type": "address"
+					},
+					{
+						"indexed": false,
+						"internalType": "bytes32",
+						"name": "profileDataHash",
+						"type": "bytes32"
+					},
+					{
+						"indexed": false,
+						"internalType": "bytes32",
+						"name": "publicKeyHash",
+						"type": "bytes32"
+					},
+					{
+						"indexed": false,
+						"internalType": "uint256",
+						"name": "timestamp",
+						"type": "uint256"
+					}
+				],
+				"name": "UserProfileUpdated",
+				"type": "event"
+			},
+			{
+				"anonymous": false,
+				"inputs": [
+					{
+						"indexed": true,
+						"internalType": "address",
+						"name": "userAddress",
+						"type": "address"
+					},
+					{
+						"indexed": true,
+						"internalType": "bytes32",
+						"name": "usernameHash",
+						"type": "bytes32"
+					},
+					{
+						"indexed": false,
+						"internalType": "uint256",
+						"name": "timestamp",
+						"type": "uint256"
+					}
+				],
+				"name": "UserRegistered",
+				"type": "event"
+			},
+			{
+				"inputs": [
+					{
+						"internalType": "address",
+						"name": "requester",
+						"type": "address"
+					},
+					{
+						"internalType": "address",
+						"name": "userAddress",
+						"type": "address"
+					}
+				],
+				"name": "checkUserDataAccess",
+				"outputs": [
+					{
+						"internalType": "bool",
+						"name": "",
+						"type": "bool"
+					}
+				],
+				"stateMutability": "view",
+				"type": "function"
+			},
+			{
+				"inputs": [],
+				"name": "deactivateAccount",
+				"outputs": [],
+				"stateMutability": "nonpayable",
+				"type": "function"
+			},
+			{
+				"inputs": [],
+				"name": "getActiveUsers",
+				"outputs": [
+					{
+						"internalType": "uint256",
+						"name": "count",
+						"type": "uint256"
+					}
+				],
+				"stateMutability": "view",
+				"type": "function"
+			},
+			{
+				"inputs": [],
+				"name": "getMyProfileInfo",
+				"outputs": [
+					{
+						"internalType": "bytes32",
+						"name": "usernameHash",
+						"type": "bytes32"
+					},
+					{
+						"internalType": "uint256",
+						"name": "createdAt",
+						"type": "uint256"
+					},
+					{
+						"internalType": "bool",
+						"name": "isActive",
+						"type": "bool"
+					},
+					{
+						"internalType": "bytes32",
+						"name": "profileDataHash",
+						"type": "bytes32"
+					},
+					{
+						"internalType": "bytes32",
+						"name": "publicKeyHash",
+						"type": "bytes32"
+					},
+					{
+						"internalType": "enum UserAuth.ProfileStatus",
+						"name": "profileStatus",
+						"type": "uint8"
+					}
+				],
+				"stateMutability": "view",
+				"type": "function"
+			},
+			{
+				"inputs": [
+					{
+						"internalType": "address",
+						"name": "userAddress",
+						"type": "address"
+					}
+				],
+				"name": "getPublicUserProfile",
+				"outputs": [
+					{
+						"internalType": "bytes32",
+						"name": "usernameHash",
+						"type": "bytes32"
+					},
+					{
+						"internalType": "bytes32",
+						"name": "profileDataHash",
+						"type": "bytes32"
+					},
+					{
+						"internalType": "bytes32",
+						"name": "publicKeyHash",
+						"type": "bytes32"
+					},
+					{
+						"internalType": "uint256",
+						"name": "createdAt",
+						"type": "uint256"
+					}
+				],
+				"stateMutability": "view",
+				"type": "function"
+			},
+			{
+				"inputs": [],
+				"name": "getTotalUsers",
+				"outputs": [
+					{
+						"internalType": "uint256",
+						"name": "count",
+						"type": "uint256"
+					}
+				],
+				"stateMutability": "view",
+				"type": "function"
+			},
+			{
+				"inputs": [],
+				"name": "getUserInfo",
+				"outputs": [
+					{
+						"internalType": "bytes32",
+						"name": "usernameHash",
+						"type": "bytes32"
+					},
+					{
+						"internalType": "uint256",
+						"name": "createdAt",
+						"type": "uint256"
+					},
+					{
+						"internalType": "bool",
+						"name": "isActive",
+						"type": "bool"
+					}
+				],
+				"stateMutability": "view",
+				"type": "function"
+			},
+			{
+				"inputs": [
+					{
+						"internalType": "address",
+						"name": "userAddress",
+						"type": "address"
+					}
+				],
+				"name": "isUserActive",
+				"outputs": [
+					{
+						"internalType": "bool",
+						"name": "",
+						"type": "bool"
+					}
+				],
+				"stateMutability": "view",
+				"type": "function"
+			},
+			{
+				"inputs": [
+					{
+						"internalType": "string",
+						"name": "username",
+						"type": "string"
+					}
+				],
+				"name": "isUsernameAvailable",
+				"outputs": [
+					{
+						"internalType": "bool",
+						"name": "available",
+						"type": "bool"
+					}
+				],
+				"stateMutability": "view",
+				"type": "function"
+			},
+			{
+				"inputs": [
+					{
+						"internalType": "string",
+						"name": "username",
+						"type": "string"
+					},
+					{
+						"internalType": "string",
+						"name": "password",
+						"type": "string"
+					}
+				],
+				"name": "login",
+				"outputs": [
+					{
+						"internalType": "bool",
+						"name": "success",
+						"type": "bool"
+					}
+				],
+				"stateMutability": "view",
+				"type": "function"
+			},
+			{
+				"inputs": [],
+				"name": "makeProfilePrivate",
+				"outputs": [],
+				"stateMutability": "nonpayable",
+				"type": "function"
+			},
+			{
+				"inputs": [],
+				"name": "makeProfilePublic",
+				"outputs": [],
+				"stateMutability": "nonpayable",
+				"type": "function"
+			},
+			{
+				"inputs": [
+					{
+						"internalType": "string",
+						"name": "username",
+						"type": "string"
+					},
+					{
+						"internalType": "string",
+						"name": "password",
+						"type": "string"
+					}
+				],
+				"name": "register",
+				"outputs": [],
+				"stateMutability": "nonpayable",
+				"type": "function"
+			},
+			{
+				"inputs": [
+					{
+						"internalType": "string",
+						"name": "username",
+						"type": "string"
+					},
+					{
+						"internalType": "string",
+						"name": "password",
+						"type": "string"
+					},
+					{
+						"internalType": "bytes32",
+						"name": "profileDataHash",
+						"type": "bytes32"
+					},
+					{
+						"internalType": "bytes32",
+						"name": "publicKeyHash",
+						"type": "bytes32"
+					}
+				],
+				"name": "registerWithProfile",
+				"outputs": [],
+				"stateMutability": "nonpayable",
+				"type": "function"
+			},
+			{
+				"inputs": [
+					{
+						"internalType": "string",
+						"name": "oldPassword",
+						"type": "string"
+					},
+					{
+						"internalType": "string",
+						"name": "newPassword",
+						"type": "string"
+					}
+				],
+				"name": "updatePassword",
+				"outputs": [],
+				"stateMutability": "nonpayable",
+				"type": "function"
+			},
+			{
+				"inputs": [
+					{
+						"internalType": "bytes32",
+						"name": "profileDataHash",
+						"type": "bytes32"
+					},
+					{
+						"internalType": "bytes32",
+						"name": "publicKeyHash",
+						"type": "bytes32"
+					}
+				],
+				"name": "updateUserProfile",
+				"outputs": [],
+				"stateMutability": "nonpayable",
+				"type": "function"
+			},
+			{
+				"inputs": [
+					{
+						"internalType": "bytes32",
+						"name": "",
+						"type": "bytes32"
+					}
+				],
+				"name": "usernameToAddress",
+				"outputs": [
+					{
+						"internalType": "address",
+						"name": "",
+						"type": "address"
+					}
+				],
+				"stateMutability": "view",
+				"type": "function"
+			},
+			{
+				"inputs": [
+					{
+						"internalType": "address",
+						"name": "",
+						"type": "address"
+					}
+				],
+				"name": "users",
+				"outputs": [
+					{
+						"internalType": "bytes32",
+						"name": "usernameHash",
+						"type": "bytes32"
+					},
+					{
+						"internalType": "bytes32",
+						"name": "passwordHash",
+						"type": "bytes32"
+					},
+					{
+						"internalType": "uint256",
+						"name": "createdAt",
+						"type": "uint256"
+					},
+					{
+						"internalType": "bool",
+						"name": "isActive",
+						"type": "bool"
+					},
+					{
+						"internalType": "bytes32",
+						"name": "profileDataHash",
+						"type": "bytes32"
+					},
+					{
+						"internalType": "bytes32",
+						"name": "publicKeyHash",
+						"type": "bytes32"
+					},
+					{
+						"internalType": "enum UserAuth.ProfileStatus",
+						"name": "profileStatus",
+						"type": "uint8"
+					}
+				],
+				"stateMutability": "view",
+				"type": "function"
+			}
+		],
+		"devdoc": {
+			"details": "智能合约用于安全存储用户认证信息 注意：在实际生产环境中，不应该在区块链上存储明文密码 这里仅作为演示，实际应用应该使用密码哈希值",
+			"kind": "dev",
+			"methods": {
+				"checkUserDataAccess(address,address)": {
+					"details": "检查 requester 是否可访问 userAddress 的资料"
+				},
+				"deactivateAccount()": {
+					"details": "停用用户账户"
+				},
+				"getActiveUsers()": {
+					"details": "获取激活状态用户数量"
+				},
+				"getMyProfileInfo()": {
+					"details": "获取当前用户完整资料信息"
+				},
+				"getPublicUserProfile(address)": {
+					"details": "读取公开用户资料（仅在用户激活且资料为公开时可读）",
+					"params": {
+						"userAddress": "目标用户地址"
+					}
+				},
+				"getTotalUsers()": {
+					"details": "获取注册用户总数",
+					"returns": {
+						"count": "用户总数"
+					}
+				},
+				"getUserInfo()": {
+					"details": "获取用户信息（不包含敏感数据）",
+					"returns": {
+						"createdAt": "创建时间",
+						"isActive": "是否激活",
+						"usernameHash": "用户名哈希"
+					}
+				},
+				"isUserActive(address)": {
+					"details": "检查地址是否注册且激活"
+				},
+				"isUsernameAvailable(string)": {
+					"details": "检查用户名是否可用",
+					"params": {
+						"username": "用户名（明文）"
+					},
+					"returns": {
+						"available": "是否可用"
+					}
+				},
+				"login(string,string)": {
+					"details": "用户登录验证",
+					"params": {
+						"password": "密码（明文）",
+						"username": "用户名（明文）"
+					},
+					"returns": {
+						"success": "登录是否成功"
+					}
+				},
+				"makeProfilePrivate()": {
+					"details": "将用户资料设为私密"
+				},
+				"makeProfilePublic()": {
+					"details": "将用户资料设为公开"
+				},
+				"register(string,string)": {
+					"details": "注册新用户",
+					"params": {
+						"password": "密码（明文）",
+						"username": "用户名（明文）"
+					}
+				},
+				"registerWithProfile(string,string,bytes32,bytes32)": {
+					"details": "注册用户并附带资料哈希与公钥哈希",
+					"params": {
+						"password": "密码（明文）",
+						"profileDataHash": "用户资料哈希",
+						"publicKeyHash": "用户公钥哈希",
+						"username": "用户名（明文）"
+					}
+				},
+				"updatePassword(string,string)": {
+					"details": "更新密码",
+					"params": {
+						"newPassword": "新密码（明文）",
+						"oldPassword": "旧密码（明文）"
+					}
+				},
+				"updateUserProfile(bytes32,bytes32)": {
+					"details": "更新用户资料哈希和公钥哈希",
+					"params": {
+						"profileDataHash": "用户资料哈希",
+						"publicKeyHash": "用户公钥哈希"
+					}
+				}
+			},
+			"title": "UserAuth",
+			"version": 1
+		},
+		"userdoc": {
+			"kind": "user",
+			"methods": {},
+			"version": 1
+		}
+	},
+	"settings": {
+		"compilationTarget": {
+			"UserAuth.sol": "UserAuth"
+		},
+		"evmVersion": "prague",
+		"libraries": {},
+		"metadata": {
+			"bytecodeHash": "ipfs"
+		},
+		"optimizer": {
+			"enabled": false,
+			"runs": 200
+		},
+		"remappings": []
+	},
+	"sources": {
+		"UserAuth.sol": {
+			"keccak256": "0xc47cffe63d85bb01f59adbb1cd22372398ee8e63ac7c3debf40f2884c8745cf8",
+			"license": "MIT",
+			"urls": [
+				"bzz-raw://1d889e20ca85a6f5f75b94d4e087334e062e45710fea93a889241e9784182f90",
+				"dweb:/ipfs/Qmack7z4tgeCEk13UTLp66oPbQq7bt7sKrnGYkW2A2HEBG"
+			]
+		}
+	},
+	"version": 1
+}

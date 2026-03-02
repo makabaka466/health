@@ -117,27 +117,23 @@ class Token(BaseModel):
 
 # 健康数据Schema
 class HealthDataBase(BaseModel):
-    weight: Optional[float] = None
-    height: Optional[float] = None
-    blood_pressure_systolic: Optional[int] = None
-    blood_pressure_diastolic: Optional[int] = None
-    heart_rate: Optional[int] = None
-    blood_sugar: Optional[float] = None
-    record_type: str = "manual"
-    is_private: bool = False
-    health_data_file_name: Optional[str] = None
-    health_data_file: Optional[str] = None
+    data_title: Optional[str] = None
+    data_content: Optional[str] = None
+    file_type: str = "text"
+    pdf_data_base64: Optional[str] = None
+    pdf_size: Optional[int] = None
 
 class HealthDataCreate(HealthDataBase):
-    recorded_at: Optional[datetime] = None
+    pass
 
 class HealthDataUpdate(HealthDataBase):
-    recorded_at: Optional[datetime] = None
+    pass
 
 class HealthDataResponse(HealthDataBase):
     id: int
     user_id: int
-    recorded_at: datetime
+    created_at: datetime
+    updated_at: datetime
     
     class Config:
         from_attributes = True

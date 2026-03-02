@@ -1,0 +1,2 @@
+
+0bafdcf1185b56deb3545b804f3506936a51721b	{"key":"make-fetch-happen:request-cache:http://registry.npm.taobao.org/webidl-conversions","integrity":null,"time":1772414743564,"size":"262","metadata":{"time":1772414743564,"url":"http://registry.npm.taobao.org/webidl-conversions","reqHeaders":{"accept":"application/json"},"resHeaders":{"content-type":"text/html","date":"Mon, 02 Mar 2026 01:25:43 GMT","location":"https://registry.npmmirror.com/webidl-conversions"},"options":{"compress":true},"status":301}}

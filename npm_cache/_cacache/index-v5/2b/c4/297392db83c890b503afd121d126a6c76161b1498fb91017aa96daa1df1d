@@ -1,0 +1,2 @@
+
+4f620c3f915e620c2653c21d80ca538827d170ab	{"key":"make-fetch-happen:request-cache:http://registry.npm.taobao.org/web3-validator","integrity":null,"time":1772414682877,"size":"262","metadata":{"time":1772414682877,"url":"http://registry.npm.taobao.org/web3-validator","reqHeaders":{"accept":"application/json"},"resHeaders":{"content-type":"text/html","date":"Mon, 02 Mar 2026 01:24:42 GMT","location":"https://registry.npmmirror.com/web3-validator"},"options":{"compress":true},"status":301}}

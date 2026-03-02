@@ -1,4 +1,4 @@
-from sqlalchemy import Boolean, Column, DateTime, Float, ForeignKey, Integer, String, Text, UniqueConstraint
+from sqlalchemy import Boolean, Column, DateTime, Enum, ForeignKey, Integer, LargeBinary, String, Text, UniqueConstraint
 from sqlalchemy.orm import relationship
 from sqlalchemy.sql import func
 
@@ -41,23 +41,19 @@ class User(Base):
 
 
 class HealthData(Base):
-    """健康数据表：记录用户体征与监测数据。"""
+    """健康数据表：统一存储文本健康信息与 PDF 文件。"""
 
-    __tablename__ = "health_data"
+    __tablename__ = "health_data_user"
 
     id = Column(Integer, primary_key=True, index=True)
     user_id = Column(Integer, ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True)
-    weight = Column(Float, nullable=True)
-    height = Column(Float, nullable=True)
-    blood_pressure_systolic = Column(Integer, nullable=True)
-    blood_pressure_diastolic = Column(Integer, nullable=True)
-    heart_rate = Column(Integer, nullable=True)
-    blood_sugar = Column(Float, nullable=True)
-    record_type = Column(String(20), default="manual", nullable=False, index=True)
-    is_private = Column(Boolean, default=False, nullable=False)
-    health_data_file_name = Column(String(255), nullable=True)
-    health_data_file = Column(Text, nullable=True)
-    recorded_at = Column(DateTime, server_default=func.now(), nullable=False)
+    data_title = Column(String(255), nullable=True)
+    data_content = Column(Text, nullable=True)
+    pdf_data = Column(LargeBinary, nullable=True)
+    file_type = Column(Enum("text", "pdf", name="health_data_file_type"), nullable=False, default="text", index=True)
+    pdf_size = Column(Integer, nullable=True)
+    created_at = Column(DateTime, server_default=func.now(), nullable=False)
+    updated_at = Column(DateTime, server_default=func.now(), onupdate=func.now(), nullable=False)
 
     user = relationship("User", back_populates="health_records")
 

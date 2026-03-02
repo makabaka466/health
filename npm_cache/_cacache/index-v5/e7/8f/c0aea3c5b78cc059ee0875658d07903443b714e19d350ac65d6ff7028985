@@ -1,0 +1,2 @@
+
+253f9d0b0a669efc809118e42f12d2b123f66243	{"key":"make-fetch-happen:request-cache:http://registry.npm.taobao.org/web3-eth-personal","integrity":null,"time":1772414682881,"size":"262","metadata":{"time":1772414682880,"url":"http://registry.npm.taobao.org/web3-eth-personal","reqHeaders":{"accept":"application/json"},"resHeaders":{"content-type":"text/html","date":"Mon, 02 Mar 2026 01:24:42 GMT","location":"https://registry.npmmirror.com/web3-eth-personal"},"options":{"compress":true},"status":301}}

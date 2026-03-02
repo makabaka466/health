@@ -1,0 +1,2 @@
+
+8b79b75fd31a2b73f03db74537758f044fa6ef51	{"key":"make-fetch-happen:request-cache:http://registry.npm.taobao.org/web3-rpc-methods","integrity":null,"time":1772414683151,"size":"262","metadata":{"time":1772414683151,"url":"http://registry.npm.taobao.org/web3-rpc-methods","reqHeaders":{"accept":"application/json"},"resHeaders":{"content-type":"text/html","date":"Mon, 02 Mar 2026 01:24:42 GMT","location":"https://registry.npmmirror.com/web3-rpc-methods"},"options":{"compress":true},"status":301}}

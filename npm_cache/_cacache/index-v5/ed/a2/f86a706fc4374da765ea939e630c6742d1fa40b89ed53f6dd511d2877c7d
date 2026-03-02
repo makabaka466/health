@@ -1,0 +1,2 @@
+
+6c5404588c5b6fe7ea9e754940dfa83efaf6c06b	{"key":"make-fetch-happen:request-cache:http://registry.npm.taobao.org/utf-8-validate","integrity":null,"time":1772414744799,"size":"262","metadata":{"time":1772414744799,"url":"http://registry.npm.taobao.org/utf-8-validate","reqHeaders":{"accept":"application/json"},"resHeaders":{"content-type":"text/html","date":"Mon, 02 Mar 2026 01:25:44 GMT","location":"https://registry.npmmirror.com/utf-8-validate"},"options":{"compress":true},"status":301}}

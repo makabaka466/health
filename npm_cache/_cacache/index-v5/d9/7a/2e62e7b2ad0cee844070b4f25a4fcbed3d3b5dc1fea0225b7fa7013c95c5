@@ -1,0 +1,2 @@
+
+c0343cb28850413906f650412ae195f1a4e02fa2	{"key":"make-fetch-happen:request-cache:http://registry.npm.taobao.org/is-regex","integrity":null,"time":1772414858058,"size":"262","metadata":{"time":1772414858057,"url":"http://registry.npm.taobao.org/is-regex","reqHeaders":{"accept":"application/json"},"resHeaders":{"content-type":"text/html","date":"Mon, 02 Mar 2026 01:27:37 GMT","location":"https://registry.npmmirror.com/is-regex"},"options":{"compress":true},"status":301}}

@@ -1,0 +1,2 @@
+
+b5110b76e7a5b138803e7e77db7ec1f2fb3a4275	{"key":"make-fetch-happen:request-cache:http://registry.npm.taobao.org/@noble%2fcurves","integrity":null,"time":1772414738207,"size":"262","metadata":{"time":1772414738207,"url":"http://registry.npm.taobao.org/@noble%2fcurves","reqHeaders":{"accept":"application/json"},"resHeaders":{"content-type":"text/html","date":"Mon, 02 Mar 2026 01:25:38 GMT","location":"https://registry.npmmirror.com/@noble%2fcurves"},"options":{"compress":true},"status":301}}

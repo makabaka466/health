@@ -65,8 +65,8 @@
                   </el-table-column>
                   <el-table-column prop="height" label="身高(cm)" width="100" />
                   <el-table-column prop="weight" label="体重(kg)" width="100" />
-                  <el-table-column prop="blood_pressure_systolic" label="收缩压" width="100" />
-                  <el-table-column prop="blood_pressure_diastolic" label="舒张压" width="100" />
+                  <el-table-column prop="blood_pressure" label="血压(舒/收)" width="120" />
+                  <el-table-column prop="blood_lipid" label="血脂" width="100" />
                   <el-table-column prop="heart_rate" label="心率" width="100" />
                   <el-table-column prop="blood_sugar" label="血糖" width="100" />
                   <el-table-column label="隐私" width="100">
@@ -153,13 +153,16 @@
         
         <el-row :gutter="16">
           <el-col :span="12">
-            <el-form-item label="收缩压" prop="blood_pressure_systolic">
-              <el-input-number v-model="healthForm.blood_pressure_systolic" :min="0" style="width: 100%" />
+            <el-form-item label="血压(舒/收)" prop="blood_pressure">
+              <el-input
+                v-model="healthForm.blood_pressure"
+                placeholder="例如 80/120（前舒张压，后收缩压）"
+              />
             </el-form-item>
           </el-col>
           <el-col :span="12">
-            <el-form-item label="舒张压" prop="blood_pressure_diastolic">
-              <el-input-number v-model="healthForm.blood_pressure_diastolic" :min="0" style="width: 100%" />
+            <el-form-item label="血脂" prop="blood_lipid">
+              <el-input-number v-model="healthForm.blood_lipid" :precision="1" :step="0.1" :min="0" style="width: 100%" />
             </el-form-item>
           </el-col>
         </el-row>
@@ -176,6 +179,15 @@
             </el-form-item>
           </el-col>
         </el-row>
+        
+        <el-form-item label="其他说明" prop="other_text">
+          <el-input
+            v-model="healthForm.other_text"
+            type="textarea"
+            :rows="3"
+            placeholder="可填写如：睡眠情况、饮食变化、服药信息等"
+          />
+        </el-form-item>
         
         <el-form-item label="记录时间" prop="recorded_at">
           <el-date-picker
@@ -220,7 +232,7 @@
               accept="application/pdf"
               :show-file-list="false"
               :auto-upload="false"
-              :before-upload="beforePdfUpload"
+              :on-change="handlePdfFileChange"
             >
               <el-button type="primary" plain>上传 PDF</el-button>
             </el-upload>
@@ -271,10 +283,11 @@ const healthFormRef = ref()
 const healthForm = ref({
   weight: null,
   height: null,
-  blood_pressure_systolic: null,
-  blood_pressure_diastolic: null,
+  blood_pressure: '',
+  blood_lipid: null,
   heart_rate: null,
   blood_sugar: null,
+  other_text: '',
   record_type: 'manual',
   is_private: false,
   health_data_file_name: null,
@@ -285,10 +298,87 @@ const healthForm = ref({
 const healthRules = {
   weight: [{ type: 'number', message: '请输入有效的体重', trigger: 'blur' }],
   height: [{ type: 'number', message: '请输入有效的身高', trigger: 'blur' }],
-  blood_pressure_systolic: [{ type: 'number', message: '请输入有效的收缩压', trigger: 'blur' }],
-  blood_pressure_diastolic: [{ type: 'number', message: '请输入有效的舒张压', trigger: 'blur' }],
+  blood_pressure: [{
+    validator: (_rule, value, callback) => {
+      if (!value) {
+        callback()
+        return
+      }
+      if (!/^\s*\d{2,3}\s*\/\s*\d{2,3}\s*$/.test(value)) {
+        callback(new Error('血压格式应为 舒张压/收缩压，例如 80/120'))
+        return
+      }
+      callback()
+    },
+    trigger: 'blur'
+  }],
+  blood_lipid: [{ type: 'number', message: '请输入有效的血脂', trigger: 'blur' }],
   heart_rate: [{ type: 'number', message: '请输入有效的心率', trigger: 'blur' }],
-  blood_sugar: [{ type: 'number', message: '请输入有效的血糖', trigger: 'blur' }]
+  blood_sugar: [{ type: 'number', message: '请输入有效的血糖', trigger: 'blur' }],
+  other_text: [{ max: 1000, message: '其他说明最多1000字', trigger: 'blur' }]
+}
+
+const parseBloodPressure = (value) => {
+  if (!value || typeof value !== 'string') {
+    return { diastolic: null, systolic: null }
+  }
+  const normalized = value.replace(/\s+/g, '')
+  const parts = normalized.split('/')
+  if (parts.length !== 2) {
+    return { diastolic: null, systolic: null }
+  }
+
+  const diastolic = Number(parts[0])
+  const systolic = Number(parts[1])
+  if (Number.isNaN(diastolic) || Number.isNaN(systolic)) {
+    return { diastolic: null, systolic: null }
+  }
+
+  return { diastolic, systolic }
+}
+
+const parseDataContent = (content) => {
+  if (!content) {
+    return { metrics: {}, other_text: '' }
+  }
+  try {
+    const parsed = JSON.parse(content)
+    if (parsed && typeof parsed === 'object') {
+      return {
+        metrics: parsed.metrics || {},
+        other_text: parsed.other_text || ''
+      }
+    }
+  } catch {
+    return { metrics: {}, other_text: content }
+  }
+  return { metrics: {}, other_text: '' }
+}
+
+const toViewRecord = (record) => {
+  const parsed = parseDataContent(record.data_content)
+  const metrics = parsed.metrics || {}
+  const fileType = record.file_type === 'pdf' ? 'pdf' : 'manual'
+  const bloodPressure = metrics.blood_pressure || (
+    metrics.blood_pressure_diastolic != null && metrics.blood_pressure_systolic != null
+      ? `${metrics.blood_pressure_diastolic}/${metrics.blood_pressure_systolic}`
+      : ''
+  )
+  return {
+    ...record,
+    record_type: fileType,
+    is_private: fileType === 'pdf',
+    health_data_file: record.pdf_data_base64 || null,
+    health_data_file_name: fileType === 'pdf' ? (record.data_title || '健康数据PDF') : null,
+    recorded_at: record.created_at,
+    weight: metrics.weight ?? null,
+    height: metrics.height ?? null,
+    blood_pressure: bloodPressure,
+    blood_lipid: metrics.blood_lipid ?? null,
+    heart_rate: metrics.heart_rate ?? null,
+    blood_sugar: metrics.blood_sugar ?? null,
+    other_text: parsed.other_text || ''
+  }
 }
 
 const statsCards = computed(() => {
@@ -346,10 +436,11 @@ const openManualDialog = () => {
   healthForm.value = {
     weight: null,
     height: null,
-    blood_pressure_systolic: null,
-    blood_pressure_diastolic: null,
+    blood_pressure: '',
+    blood_lipid: null,
     heart_rate: null,
     blood_sugar: null,
+    other_text: '',
     record_type: 'manual',
     is_private: false,
     health_data_file_name: null,
@@ -365,10 +456,11 @@ const openPdfDialog = () => {
   healthForm.value = {
     weight: null,
     height: null,
-    blood_pressure_systolic: null,
-    blood_pressure_diastolic: null,
+    blood_pressure: '',
+    blood_lipid: null,
     heart_rate: null,
     blood_sugar: null,
+    other_text: '',
     record_type: 'pdf',
     is_private: true,
     health_data_file_name: null,
@@ -379,10 +471,24 @@ const openPdfDialog = () => {
 }
 
 const editRecord = (record) => {
+  const parsed = parseDataContent(record.data_content)
+  const metrics = parsed.metrics || {}
+  const bloodPressure = metrics.blood_pressure || (
+    metrics.blood_pressure_diastolic != null && metrics.blood_pressure_systolic != null
+      ? `${metrics.blood_pressure_diastolic}/${metrics.blood_pressure_systolic}`
+      : ''
+  )
   formMode.value = record.record_type === 'pdf' ? 'pdf' : 'manual'
   isEditing.value = true
   healthForm.value = {
     ...record,
+    weight: metrics.weight ?? null,
+    height: metrics.height ?? null,
+    blood_pressure: bloodPressure,
+    blood_lipid: metrics.blood_lipid ?? null,
+    heart_rate: metrics.heart_rate ?? null,
+    blood_sugar: metrics.blood_sugar ?? null,
+    other_text: parsed.other_text || '',
     record_type: record.record_type || 'manual',
     is_private: Boolean(record.is_private),
     health_data_file_name: record.health_data_file_name || null,
@@ -392,17 +498,20 @@ const editRecord = (record) => {
   dialogVisible.value = true
 }
 
-const beforePdfUpload = (file) => {
+const handlePdfFileChange = (uploadFile) => {
+  const file = uploadFile?.raw || uploadFile
+  if (!file) return
+
   const isPdfByType = file.type === 'application/pdf'
   const isPdfByName = file.name?.toLowerCase().endsWith('.pdf')
   if (!isPdfByType && !isPdfByName) {
     ElMessage.error('仅支持 PDF 文件')
-    return false
+    return
   }
 
   if (file.size > 6 * 1024 * 1024) {
     ElMessage.error('PDF 不能超过 6MB')
-    return false
+    return
   }
 
   const reader = new FileReader()
@@ -412,13 +521,18 @@ const beforePdfUpload = (file) => {
     healthForm.value.is_private = true
   }
   reader.readAsDataURL(file)
-
-  return false
 }
 
 const removeFile = () => {
   healthForm.value.health_data_file_name = null
   healthForm.value.health_data_file = null
+}
+
+const extractErrorDetail = (error, fallback) => {
+  const detail = error?.response?.data?.detail
+  if (typeof detail === 'string') return detail
+  if (Array.isArray(detail)) return detail[0]?.msg || fallback
+  return fallback
 }
 
 const saveHealthData = async () => {
@@ -430,27 +544,35 @@ const saveHealthData = async () => {
 
     saving.value = true
     
+    const metrics = {
+      weight: healthForm.value.weight,
+      height: healthForm.value.height,
+      blood_pressure: healthForm.value.blood_pressure,
+      blood_lipid: healthForm.value.blood_lipid,
+      heart_rate: healthForm.value.heart_rate,
+      blood_sugar: healthForm.value.blood_sugar
+    }
+
+    const parsedPressure = parseBloodPressure(healthForm.value.blood_pressure)
+    metrics.blood_pressure_diastolic = parsedPressure.diastolic
+    metrics.blood_pressure_systolic = parsedPressure.systolic
+
     const payload = {
-      ...healthForm.value,
-      record_type: formMode.value,
-      is_private: formMode.value === 'pdf' ? true : healthForm.value.is_private,
-      recorded_at: healthForm.value.recorded_at
-        ? new Date(healthForm.value.recorded_at).toISOString()
-        : null
+      data_title: formMode.value === 'pdf' ? (healthForm.value.health_data_file_name || '健康数据PDF') : '手动健康记录',
+      file_type: formMode.value === 'pdf' ? 'pdf' : 'text',
+      data_content: formMode.value === 'pdf'
+        ? null
+        : JSON.stringify({ metrics, other_text: healthForm.value.other_text || '' }),
+      pdf_data_base64: formMode.value === 'pdf' ? healthForm.value.health_data_file : null
     }
 
     if (formMode.value === 'pdf') {
-      if (!payload.health_data_file) {
+      if (!payload.pdf_data_base64) {
         ElMessage.error('请先上传PDF文件')
         return
       }
 
-      payload.weight = null
-      payload.height = null
-      payload.blood_pressure_systolic = null
-      payload.blood_pressure_diastolic = null
-      payload.heart_rate = null
-      payload.blood_sugar = null
+      payload.data_content = null
     }
     
     if (isEditing.value) {
@@ -464,7 +586,7 @@ const saveHealthData = async () => {
     dialogVisible.value = false
     await loadHealthData()
   } catch (error) {
-    ElMessage.error('操作失败，请重试')
+    ElMessage.error(extractErrorDetail(error, '操作失败，请重试'))
   } finally {
     saving.value = false
   }
@@ -486,7 +608,7 @@ const loadHealthData = async () => {
       healthApi.getRecords(),
       healthApi.getSummary()
     ])
-    healthRecords.value = records
+    healthRecords.value = records.map(toViewRecord)
     healthSummary.value = summary
   } catch (error) {
     ElMessage.error('加载健康数据失败')

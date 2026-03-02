@@ -1,0 +1,779 @@
+{
+	"compiler": {
+		"version": "0.8.30+commit.73712a01"
+	},
+	"language": "Solidity",
+	"output": {
+		"abi": [
+			{
+				"anonymous": false,
+				"inputs": [
+					{
+						"indexed": true,
+						"internalType": "address",
+						"name": "granter",
+						"type": "address"
+					},
+					{
+						"indexed": true,
+						"internalType": "address",
+						"name": "requester",
+						"type": "address"
+					},
+					{
+						"indexed": true,
+						"internalType": "bytes32",
+						"name": "dataId",
+						"type": "bytes32"
+					},
+					{
+						"indexed": false,
+						"internalType": "uint256",
+						"name": "expiresAt",
+						"type": "uint256"
+					}
+				],
+				"name": "AccessGranted",
+				"type": "event"
+			},
+			{
+				"anonymous": false,
+				"inputs": [
+					{
+						"indexed": true,
+						"internalType": "address",
+						"name": "granter",
+						"type": "address"
+					},
+					{
+						"indexed": true,
+						"internalType": "address",
+						"name": "requester",
+						"type": "address"
+					},
+					{
+						"indexed": true,
+						"internalType": "bytes32",
+						"name": "dataId",
+						"type": "bytes32"
+					}
+				],
+				"name": "AccessRevoked",
+				"type": "event"
+			},
+			{
+				"anonymous": false,
+				"inputs": [
+					{
+						"indexed": true,
+						"internalType": "address",
+						"name": "owner",
+						"type": "address"
+					},
+					{
+						"indexed": true,
+						"internalType": "bytes32",
+						"name": "dataId",
+						"type": "bytes32"
+					},
+					{
+						"indexed": false,
+						"internalType": "enum HealthDataAccess.DataStatus",
+						"name": "oldStatus",
+						"type": "uint8"
+					},
+					{
+						"indexed": false,
+						"internalType": "enum HealthDataAccess.DataStatus",
+						"name": "newStatus",
+						"type": "uint8"
+					},
+					{
+						"indexed": false,
+						"internalType": "uint256",
+						"name": "timestamp",
+						"type": "uint256"
+					}
+				],
+				"name": "DataStatusChanged",
+				"type": "event"
+			},
+			{
+				"anonymous": false,
+				"inputs": [
+					{
+						"indexed": true,
+						"internalType": "address",
+						"name": "owner",
+						"type": "address"
+					},
+					{
+						"indexed": true,
+						"internalType": "bytes32",
+						"name": "dataId",
+						"type": "bytes32"
+					},
+					{
+						"indexed": false,
+						"internalType": "string",
+						"name": "dataType",
+						"type": "string"
+					},
+					{
+						"indexed": false,
+						"internalType": "uint256",
+						"name": "timestamp",
+						"type": "uint256"
+					}
+				],
+				"name": "DataStored",
+				"type": "event"
+			},
+			{
+				"anonymous": false,
+				"inputs": [
+					{
+						"indexed": true,
+						"internalType": "address",
+						"name": "owner",
+						"type": "address"
+					},
+					{
+						"indexed": true,
+						"internalType": "bytes32",
+						"name": "dataId",
+						"type": "bytes32"
+					},
+					{
+						"indexed": false,
+						"internalType": "uint256",
+						"name": "timestamp",
+						"type": "uint256"
+					}
+				],
+				"name": "DataUpdated",
+				"type": "event"
+			},
+			{
+				"inputs": [
+					{
+						"internalType": "address",
+						"name": "requester",
+						"type": "address"
+					},
+					{
+						"internalType": "bytes32[]",
+						"name": "dataIds",
+						"type": "bytes32[]"
+					},
+					{
+						"internalType": "bool",
+						"name": "canRead",
+						"type": "bool"
+					},
+					{
+						"internalType": "bool",
+						"name": "canWrite",
+						"type": "bool"
+					},
+					{
+						"internalType": "uint256",
+						"name": "duration",
+						"type": "uint256"
+					}
+				],
+				"name": "batchGrantAccess",
+				"outputs": [],
+				"stateMutability": "nonpayable",
+				"type": "function"
+			},
+			{
+				"inputs": [
+					{
+						"internalType": "address",
+						"name": "requester",
+						"type": "address"
+					},
+					{
+						"internalType": "bytes32",
+						"name": "dataId",
+						"type": "bytes32"
+					}
+				],
+				"name": "checkAccess",
+				"outputs": [
+					{
+						"internalType": "bool",
+						"name": "",
+						"type": "bool"
+					}
+				],
+				"stateMutability": "view",
+				"type": "function"
+			},
+			{
+				"inputs": [
+					{
+						"internalType": "address",
+						"name": "requester",
+						"type": "address"
+					},
+					{
+						"internalType": "bytes32",
+						"name": "dataId",
+						"type": "bytes32"
+					}
+				],
+				"name": "checkPermission",
+				"outputs": [
+					{
+						"internalType": "bool",
+						"name": "hasPermission",
+						"type": "bool"
+					},
+					{
+						"internalType": "bool",
+						"name": "canRead",
+						"type": "bool"
+					},
+					{
+						"internalType": "bool",
+						"name": "canWrite",
+						"type": "bool"
+					},
+					{
+						"internalType": "uint256",
+						"name": "expiresAt",
+						"type": "uint256"
+					}
+				],
+				"stateMutability": "view",
+				"type": "function"
+			},
+			{
+				"inputs": [
+					{
+						"internalType": "bytes32",
+						"name": "dataId",
+						"type": "bytes32"
+					}
+				],
+				"name": "deleteData",
+				"outputs": [],
+				"stateMutability": "nonpayable",
+				"type": "function"
+			},
+			{
+				"inputs": [],
+				"name": "getContractInfo",
+				"outputs": [
+					{
+						"internalType": "uint256",
+						"name": "totalRecords",
+						"type": "uint256"
+					},
+					{
+						"internalType": "uint256",
+						"name": "activeRecords",
+						"type": "uint256"
+					}
+				],
+				"stateMutability": "pure",
+				"type": "function"
+			},
+			{
+				"inputs": [
+					{
+						"internalType": "bytes32",
+						"name": "dataId",
+						"type": "bytes32"
+					}
+				],
+				"name": "getDataStatus",
+				"outputs": [
+					{
+						"internalType": "enum HealthDataAccess.DataStatus",
+						"name": "",
+						"type": "uint8"
+					}
+				],
+				"stateMutability": "view",
+				"type": "function"
+			},
+			{
+				"inputs": [
+					{
+						"internalType": "bytes32",
+						"name": "dataId",
+						"type": "bytes32"
+					}
+				],
+				"name": "getHealthData",
+				"outputs": [
+					{
+						"internalType": "bytes32",
+						"name": "dataHash",
+						"type": "bytes32"
+					},
+					{
+						"internalType": "bytes32",
+						"name": "encryptedData",
+						"type": "bytes32"
+					},
+					{
+						"internalType": "uint256",
+						"name": "timestamp",
+						"type": "uint256"
+					},
+					{
+						"internalType": "address",
+						"name": "owner",
+						"type": "address"
+					},
+					{
+						"internalType": "string",
+						"name": "dataType",
+						"type": "string"
+					}
+				],
+				"stateMutability": "view",
+				"type": "function"
+			},
+			{
+				"inputs": [
+					{
+						"internalType": "address",
+						"name": "user",
+						"type": "address"
+					}
+				],
+				"name": "getUserDataCount",
+				"outputs": [
+					{
+						"internalType": "uint256",
+						"name": "",
+						"type": "uint256"
+					}
+				],
+				"stateMutability": "view",
+				"type": "function"
+			},
+			{
+				"inputs": [
+					{
+						"internalType": "address",
+						"name": "user",
+						"type": "address"
+					}
+				],
+				"name": "getUserDataIds",
+				"outputs": [
+					{
+						"internalType": "bytes32[]",
+						"name": "",
+						"type": "bytes32[]"
+					}
+				],
+				"stateMutability": "view",
+				"type": "function"
+			},
+			{
+				"inputs": [
+					{
+						"internalType": "address",
+						"name": "requester",
+						"type": "address"
+					},
+					{
+						"internalType": "bytes32",
+						"name": "dataId",
+						"type": "bytes32"
+					},
+					{
+						"internalType": "bool",
+						"name": "canRead",
+						"type": "bool"
+					},
+					{
+						"internalType": "bool",
+						"name": "canWrite",
+						"type": "bool"
+					},
+					{
+						"internalType": "uint256",
+						"name": "duration",
+						"type": "uint256"
+					}
+				],
+				"name": "grantAccess",
+				"outputs": [],
+				"stateMutability": "nonpayable",
+				"type": "function"
+			},
+			{
+				"inputs": [
+					{
+						"internalType": "bytes32",
+						"name": "",
+						"type": "bytes32"
+					}
+				],
+				"name": "healthRecords",
+				"outputs": [
+					{
+						"internalType": "bytes32",
+						"name": "dataHash",
+						"type": "bytes32"
+					},
+					{
+						"internalType": "bytes32",
+						"name": "encryptedData",
+						"type": "bytes32"
+					},
+					{
+						"internalType": "uint256",
+						"name": "timestamp",
+						"type": "uint256"
+					},
+					{
+						"internalType": "address",
+						"name": "owner",
+						"type": "address"
+					},
+					{
+						"internalType": "bool",
+						"name": "isActive",
+						"type": "bool"
+					},
+					{
+						"internalType": "string",
+						"name": "dataType",
+						"type": "string"
+					},
+					{
+						"internalType": "enum HealthDataAccess.DataStatus",
+						"name": "status",
+						"type": "uint8"
+					}
+				],
+				"stateMutability": "view",
+				"type": "function"
+			},
+			{
+				"inputs": [
+					{
+						"internalType": "bytes32",
+						"name": "dataId",
+						"type": "bytes32"
+					}
+				],
+				"name": "makeDataPrivate",
+				"outputs": [],
+				"stateMutability": "nonpayable",
+				"type": "function"
+			},
+			{
+				"inputs": [
+					{
+						"internalType": "bytes32",
+						"name": "dataId",
+						"type": "bytes32"
+					}
+				],
+				"name": "makeDataPublic",
+				"outputs": [],
+				"stateMutability": "nonpayable",
+				"type": "function"
+			},
+			{
+				"inputs": [
+					{
+						"internalType": "address",
+						"name": "",
+						"type": "address"
+					},
+					{
+						"internalType": "bytes32",
+						"name": "",
+						"type": "bytes32"
+					}
+				],
+				"name": "permissions",
+				"outputs": [
+					{
+						"internalType": "address",
+						"name": "requester",
+						"type": "address"
+					},
+					{
+						"internalType": "bytes32",
+						"name": "dataId",
+						"type": "bytes32"
+					},
+					{
+						"internalType": "uint256",
+						"name": "grantedAt",
+						"type": "uint256"
+					},
+					{
+						"internalType": "uint256",
+						"name": "expiresAt",
+						"type": "uint256"
+					},
+					{
+						"internalType": "bool",
+						"name": "canRead",
+						"type": "bool"
+					},
+					{
+						"internalType": "bool",
+						"name": "canWrite",
+						"type": "bool"
+					},
+					{
+						"internalType": "address",
+						"name": "granter",
+						"type": "address"
+					}
+				],
+				"stateMutability": "view",
+				"type": "function"
+			},
+			{
+				"inputs": [
+					{
+						"internalType": "address",
+						"name": "requester",
+						"type": "address"
+					},
+					{
+						"internalType": "bytes32",
+						"name": "dataId",
+						"type": "bytes32"
+					}
+				],
+				"name": "revokeAccess",
+				"outputs": [],
+				"stateMutability": "nonpayable",
+				"type": "function"
+			},
+			{
+				"inputs": [
+					{
+						"internalType": "bytes32",
+						"name": "dataHash",
+						"type": "bytes32"
+					},
+					{
+						"internalType": "bytes32",
+						"name": "encryptedData",
+						"type": "bytes32"
+					},
+					{
+						"internalType": "string",
+						"name": "dataType",
+						"type": "string"
+					}
+				],
+				"name": "storeHealthData",
+				"outputs": [
+					{
+						"internalType": "bytes32",
+						"name": "",
+						"type": "bytes32"
+					}
+				],
+				"stateMutability": "nonpayable",
+				"type": "function"
+			},
+			{
+				"inputs": [
+					{
+						"internalType": "bytes32",
+						"name": "dataId",
+						"type": "bytes32"
+					},
+					{
+						"internalType": "bytes32",
+						"name": "newDataHash",
+						"type": "bytes32"
+					},
+					{
+						"internalType": "bytes32",
+						"name": "newEncryptedData",
+						"type": "bytes32"
+					}
+				],
+				"name": "updateHealthData",
+				"outputs": [],
+				"stateMutability": "nonpayable",
+				"type": "function"
+			},
+			{
+				"inputs": [
+					{
+						"internalType": "address",
+						"name": "",
+						"type": "address"
+					},
+					{
+						"internalType": "uint256",
+						"name": "",
+						"type": "uint256"
+					}
+				],
+				"name": "userRecords",
+				"outputs": [
+					{
+						"internalType": "bytes32",
+						"name": "",
+						"type": "bytes32"
+					}
+				],
+				"stateMutability": "view",
+				"type": "function"
+			}
+		],
+		"devdoc": {
+			"details": "健康数据存储与访问控制合约 实现数据的去中心化存储、加密和访问权限管理",
+			"kind": "dev",
+			"methods": {
+				"batchGrantAccess(address,bytes32[],bool,bool,uint256)": {
+					"details": "批量授权",
+					"params": {
+						"canRead": "是否可读",
+						"canWrite": "是否可写",
+						"dataIds": "数据ID数组",
+						"duration": "授权时长",
+						"requester": "请求者地址"
+					}
+				},
+				"checkAccess(address,bytes32)": {
+					"details": "检查某地址是否可读该数据（公开数据直接可读）",
+					"params": {
+						"dataId": "数据ID",
+						"requester": "请求者地址"
+					}
+				},
+				"checkPermission(address,bytes32)": {
+					"details": "检查权限状态",
+					"params": {
+						"dataId": "数据ID",
+						"requester": "请求者地址"
+					}
+				},
+				"deleteData(bytes32)": {
+					"details": "删除数据（仅所有者）",
+					"params": {
+						"dataId": "数据ID"
+					}
+				},
+				"getContractInfo()": {
+					"details": "获取合约信息"
+				},
+				"getDataStatus(bytes32)": {
+					"details": "获取数据当前状态（0=Private, 1=Public）",
+					"params": {
+						"dataId": "数据ID"
+					}
+				},
+				"getHealthData(bytes32)": {
+					"details": "获取健康数据",
+					"params": {
+						"dataId": "数据ID"
+					}
+				},
+				"getUserDataCount(address)": {
+					"details": "获取数据数量",
+					"params": {
+						"user": "用户地址"
+					}
+				},
+				"getUserDataIds(address)": {
+					"details": "获取用户的所有数据ID",
+					"params": {
+						"user": "用户地址"
+					}
+				},
+				"grantAccess(address,bytes32,bool,bool,uint256)": {
+					"details": "授权访问权限",
+					"params": {
+						"canRead": "是否可读",
+						"canWrite": "是否可写",
+						"dataId": "数据ID",
+						"duration": "授权时长（秒）",
+						"requester": "请求者地址"
+					}
+				},
+				"makeDataPrivate(bytes32)": {
+					"details": "将数据改回私密（由所有者执行）",
+					"params": {
+						"dataId": "数据ID"
+					}
+				},
+				"makeDataPublic(bytes32)": {
+					"details": "将数据公开（由所有者执行）",
+					"params": {
+						"dataId": "数据ID"
+					}
+				},
+				"revokeAccess(address,bytes32)": {
+					"details": "撤销访问权限",
+					"params": {
+						"dataId": "数据ID",
+						"requester": "请求者地址"
+					}
+				},
+				"storeHealthData(bytes32,bytes32,string)": {
+					"details": "存储健康数据",
+					"params": {
+						"dataHash": "数据哈希值",
+						"dataType": "数据类型",
+						"encryptedData": "加密后的数据"
+					}
+				},
+				"updateHealthData(bytes32,bytes32,bytes32)": {
+					"details": "更新健康数据",
+					"params": {
+						"dataId": "数据ID",
+						"newDataHash": "新的数据哈希",
+						"newEncryptedData": "新的加密数据"
+					}
+				}
+			},
+			"title": "HealthDataAccess",
+			"version": 1
+		},
+		"userdoc": {
+			"kind": "user",
+			"methods": {},
+			"version": 1
+		}
+	},
+	"settings": {
+		"compilationTarget": {
+			"HealthDataAccess.sol": "HealthDataAccess"
+		},
+		"evmVersion": "prague",
+		"libraries": {},
+		"metadata": {
+			"bytecodeHash": "ipfs"
+		},
+		"optimizer": {
+			"enabled": false,
+			"runs": 200
+		},
+		"remappings": []
+	},
+	"sources": {
+		"HealthDataAccess.sol": {
+			"keccak256": "0xb461a588e06a9b98409e974fab8615d055adc9f1181b5ff274d2ed7345c0470b",
+			"license": "MIT",
+			"urls": [
+				"bzz-raw://d98c05199e0f48d914012160429a9b2fbbc475e86a588a2e612a5521e208c0a9",
+				"dweb:/ipfs/QmUUW2UzTP7C6gu5AVfdwWDBGvpiCp25qR24uxFj6F6FR3"
+			]
+		}
+	},
+	"version": 1
+}

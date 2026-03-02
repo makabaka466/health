@@ -1,0 +1,2 @@
+
+8637ae2289691249c6c60f18d1714bc15119f63f	{"key":"make-fetch-happen:request-cache:http://registry.npm.taobao.org/cross-fetch","integrity":null,"time":1772414689775,"size":"262","metadata":{"time":1772414689775,"url":"http://registry.npm.taobao.org/cross-fetch","reqHeaders":{"accept":"application/json"},"resHeaders":{"content-type":"text/html","date":"Mon, 02 Mar 2026 01:24:49 GMT","location":"https://registry.npmmirror.com/cross-fetch"},"options":{"compress":true},"status":301}}

@@ -1,0 +1,2 @@
+
+b11a6077d63dedc0cff874e1e77f1228521d0ae0	{"key":"make-fetch-happen:request-cache:http://registry.npm.taobao.org/abitype","integrity":null,"time":1772414689768,"size":"262","metadata":{"time":1772414689768,"url":"http://registry.npm.taobao.org/abitype","reqHeaders":{"accept":"application/json"},"resHeaders":{"content-type":"text/html","date":"Mon, 02 Mar 2026 01:24:49 GMT","location":"https://registry.npmmirror.com/abitype"},"options":{"compress":true},"status":301}}

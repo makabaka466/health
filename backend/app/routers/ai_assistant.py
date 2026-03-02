@@ -2,6 +2,7 @@ from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
 from typing import List, Optional
 from datetime import datetime
+import json
 
 from app.database import get_db
 from app import models, schemas
@@ -9,6 +10,19 @@ from app.routers.auth import get_current_user
 
 
 router = APIRouter()
+
+
+def _extract_metrics_from_record(record: models.HealthData) -> dict:
+    if not record.data_content:
+        return {}
+    try:
+        payload = json.loads(record.data_content)
+    except (TypeError, json.JSONDecodeError):
+        return {}
+    if not isinstance(payload, dict):
+        return {}
+    metrics = payload.get("metrics")
+    return metrics if isinstance(metrics, dict) else {}
 
 
 @router.post("/chat", response_model=schemas.ChatResponse)
@@ -147,7 +161,7 @@ async def get_health_recommendations(
     # 获取用户的健康数据
     health_records = db.query(models.HealthData).filter(
         models.HealthData.user_id == user_id
-    ).order_by(models.HealthData.recorded_at.desc()).limit(10).all()
+    ).order_by(models.HealthData.created_at.desc()).limit(10).all()
     
     if not health_records:
         return {"recommendations": ["暂无健康数据，请先记录您的健康信息"]}
@@ -155,11 +169,12 @@ async def get_health_recommendations(
     # 基于健康数据生成建议
     recommendations = []
     latest_record = health_records[0]
+    latest_metrics = _extract_metrics_from_record(latest_record)
     
     # 血压建议
-    if latest_record.blood_pressure_systolic and latest_record.blood_pressure_diastolic:
-        systolic = latest_record.blood_pressure_systolic
-        diastolic = latest_record.blood_pressure_diastolic
+    systolic = latest_metrics.get("blood_pressure_systolic")
+    diastolic = latest_metrics.get("blood_pressure_diastolic")
+    if systolic and diastolic:
         
         if systolic > 140 or diastolic > 90:
             recommendations.append("您的血压偏高，建议减少盐分摄入，增加有氧运动，必要时咨询医生")
@@ -167,17 +182,19 @@ async def get_health_recommendations(
             recommendations.append("您的血压偏低，建议适当增加营养摄入，避免长时间站立")
     
     # 心率建议
-    if latest_record.heart_rate:
-        if latest_record.heart_rate > 100:
+    heart_rate = latest_metrics.get("heart_rate")
+    if heart_rate:
+        if heart_rate > 100:
             recommendations.append("您的心率偏快，建议放松心情，减少咖啡因摄入，保证充足睡眠")
-        elif latest_record.heart_rate < 60:
+        elif heart_rate < 60:
             recommendations.append("您的心率偏慢，如果您不是经常运动的人，建议咨询医生检查")
     
     # 血糖建议
-    if latest_record.blood_sugar:
-        if latest_record.blood_sugar > 6.1:
+    blood_sugar = latest_metrics.get("blood_sugar")
+    if blood_sugar:
+        if blood_sugar > 6.1:
             recommendations.append("您的血糖偏高，建议控制碳水化合物摄入，增加运动，定期监测血糖")
-        elif latest_record.blood_sugar < 3.9:
+        elif blood_sugar < 3.9:
             recommendations.append("您的血糖偏低，建议规律饮食，避免长时间空腹，随身携带零食")
     
     # 生活方式建议
@@ -206,7 +223,7 @@ async def analyze_health_data(
     # 获取健康数据
     health_records = db.query(models.HealthData).filter(
         models.HealthData.user_id == user_id
-    ).order_by(models.HealthData.recorded_at.desc()).all()
+    ).order_by(models.HealthData.created_at.desc()).all()
     
     if not health_records:
         return {"analysis": "暂无健康数据可供分析", "insights": []}
@@ -217,18 +234,26 @@ async def analyze_health_data(
     if len(health_records) >= 2:
         recent = health_records[0]
         previous = health_records[1]
+        recent_metrics = _extract_metrics_from_record(recent)
+        previous_metrics = _extract_metrics_from_record(previous)
         
         # 体重变化
-        if recent.weight and previous.weight:
-            weight_change = recent.weight - previous.weight
+        recent_weight = recent_metrics.get("weight")
+        previous_weight = previous_metrics.get("weight")
+        if recent_weight and previous_weight:
+            weight_change = recent_weight - previous_weight
             if abs(weight_change) > 0.5:
                 insights.append(f"体重变化：{'增加' if weight_change > 0 else '减少'}了{abs(weight_change):.1f}kg")
         
         # 血压变化
-        if (recent.blood_pressure_systolic and previous.blood_pressure_systolic and
-            recent.blood_pressure_diastolic and previous.blood_pressure_diastolic):
-            sys_change = recent.blood_pressure_systolic - previous.blood_pressure_systolic
-            dia_change = recent.blood_pressure_diastolic - previous.blood_pressure_diastolic
+        if (
+            recent_metrics.get("blood_pressure_systolic")
+            and previous_metrics.get("blood_pressure_systolic")
+            and recent_metrics.get("blood_pressure_diastolic")
+            and previous_metrics.get("blood_pressure_diastolic")
+        ):
+            sys_change = recent_metrics.get("blood_pressure_systolic") - previous_metrics.get("blood_pressure_systolic")
+            dia_change = recent_metrics.get("blood_pressure_diastolic") - previous_metrics.get("blood_pressure_diastolic")
             
             if abs(sys_change) > 5 or abs(dia_change) > 5:
                 insights.append(f"血压变化：收缩压{'上升' if sys_change > 0 else '下降'}{abs(sys_change)}mmHg，"
@@ -297,11 +322,12 @@ async def generate_ai_response(user_message: str, current_user: models.User, db:
 def calculate_health_score(health_record: models.HealthData) -> int:
     """计算健康评分"""
     score = 100
+    metrics = _extract_metrics_from_record(health_record)
     
     # 血压评分
-    if health_record.blood_pressure_systolic and health_record.blood_pressure_diastolic:
-        systolic = health_record.blood_pressure_systolic
-        diastolic = health_record.blood_pressure_diastolic
+    systolic = metrics.get("blood_pressure_systolic")
+    diastolic = metrics.get("blood_pressure_diastolic")
+    if systolic and diastolic:
         
         if systolic > 140 or diastolic > 90:
             score -= 20
@@ -311,24 +337,26 @@ def calculate_health_score(health_record: models.HealthData) -> int:
             score -= 15
     
     # 心率评分
-    if health_record.heart_rate:
-        heart_rate = health_record.heart_rate
+    heart_rate = metrics.get("heart_rate")
+    if heart_rate:
         if heart_rate > 100:
             score -= 15
         elif heart_rate < 60:
             score -= 10
     
     # 血糖评分
-    if health_record.blood_sugar:
-        blood_sugar = health_record.blood_sugar
+    blood_sugar = metrics.get("blood_sugar")
+    if blood_sugar:
         if blood_sugar > 6.1:
             score -= 20
         elif blood_sugar < 3.9:
             score -= 15
     
     # BMI评分（如果有身高体重数据）
-    if health_record.height and health_record.weight:
-        bmi = health_record.weight / ((health_record.height / 100) ** 2)
+    height = metrics.get("height")
+    weight = metrics.get("weight")
+    if height and weight:
+        bmi = weight / ((height / 100) ** 2)
         if bmi > 30:
             score -= 20
         elif bmi > 25:
