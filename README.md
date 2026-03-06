@@ -1,195 +1,159 @@
 # 健康管理系统
 
-一个基于Vue.js和FastAPI的现代化健康管理系统，支持健康数据记录、AI健康助手、知识中心等功能。
+基于 **Vue 3 + FastAPI + MySQL + Web3** 的健康管理平台，支持健康数据管理、AI 辅助分析、健康文章管理，以及基于私钥的隐私访问控制（公开/私密）。
 
-## 功能特性
+---
 
-- 🔐 **用户认证**: 支持用户注册、登录、权限管理
-- 📊 **健康数据管理**: 记录和分析体重、血压、心率、血糖等健康指标
-- 🤖 **AI健康助手**: 智能健康问答和个性化建议
-- 📚 **健康知识中心**: 健康知识浏览和学习
-- 📱 **响应式设计**: 支持桌面端和移动端
+## 核心能力
+
+- 🔐 用户注册时自动生成钱包地址与一次性私钥（仅返回一次）
+- 🧾 个人资料支持公开/私密模式
+- 📊 健康数据支持文本/PDF，支持公开/私密存储
+- � AI 助手支持对话与健康建议
+- 📚 健康文章支持后台管理、收藏与阅读历史
+- ⛓️ 健康数据可选上链（Ganache / EVM）
+- �️ 管理后台支持系统设置与系统日志
+
+---
 
 ## 技术栈
 
 ### 后端
-- **FastAPI**: 现代化的Python Web框架
-- **SQLAlchemy**: ORM数据库操作
-- **MySQL**: 关系型数据库
-- **JWT**: 用户认证
-- **Pydantic**: 数据验证
+- FastAPI
+- SQLAlchemy
+- MySQL
+- Pydantic
+- JWT
+- Web3.py
+- cryptography (Fernet)
 
 ### 前端
-- **Vue 3**: 现代化前端框架
-- **Element Plus**: UI组件库
-- **Axios**: HTTP客户端
-- **Vue Router**: 路由管理
+- Vue 3
+- Element Plus
+- Vue Router
+- Axios
+- Web3.js
 
-## 快速开始
-
-### 环境要求
-- Python 3.8+
-- Node.js 16+
-- MySQL 8.0+
-
-### 后端启动
-
-1. 进入后端目录
-```bash
-cd backend
-```
-
-2. 创建虚拟环境
-```bash
-python -m venv venv
-source venv/bin/activate  # Windows: venv\Scripts\activate
-```
-
-3. 安装依赖
-```bash
-pip install -r requirements.txt
-```
-
-4. 配置数据库
-```bash
-# 修改 app/config.py 中的数据库配置
-# 或设置环境变量
-export DB_HOST=localhost
-export DB_USER=root
-export DB_PASSWORD=your_password
-export DB_NAME=health
-```
-
-5. 启动服务
-```bash
-uvicorn app.main:app --reload --host 0.0.0.0 --port 8000
-```
-
-### 前端启动
-
-1. 进入前端目录
-```bash
-cd frontend
-```
-
-2. 安装依赖
-```bash
-npm install
-```
-
-3. 启动开发服务器
-```bash
-npm run dev
-```
-
-4. 访问应用
-```
-http://localhost:3000
-```
-
-## 默认账号
-
-系统会自动创建以下测试账号：
-
-### 管理员账号
-- 用户名: `admin`
-- 密码: `admin123`
-- 邮箱: `admin@health.com`
-
-### 普通用户账号
-- 用户名: `xiaoming`
-- 密码: `123456`
-- 邮箱: `xiaoming@health.com`
-
-- 用户名: `xiaohong`
-- 密码: `123456`
-- 邮箱: `xiaohong@health.com`
-
-### 管理员注册密钥
-- 123
-
-## API文档
-
-后端启动后，可以访问以下地址查看API文档：
-
-- Swagger UI: `http://localhost:8000/docs`
-- ReDoc: `http://localhost:8000/redoc`
-
-## 项目结构
-
-```
-健康管理系统/
-├── backend/                 # 后端代码
-│   ├── app/
-│   │   ├── models.py       # 数据模型
-│   │   ├── schemas.py      # 数据验证
-│   │   ├── main.py         # 应用入口
-│   │   ├── config.py       # 配置文件
-│   │   ├── database.py     # 数据库配置
-│   │   ├── routers/        # API路由
-│   │   └── services/       # 业务逻辑
-│   └── requirements.txt     # Python依赖
-├── frontend/               # 前端代码
-│   ├── src/
-│   │   ├── views/          # 页面组件
-│   │   ├── api/            # API调用
-│   │   ├── components/      # 公共组件
-│   │   └── router/         # 路由配置
-│   └── package.json        # Node.js依赖
-└── contracts/              # 智能合约（未来扩展）
-```
-
-## 功能说明
-
-### 1. 用户认证
-- 用户注册和登录
-- JWT令牌认证
-- 角色权限管理（管理员/普通用户）
-
-### 2. 健康数据管理
-- 记录体重、血压、心率、血糖等数据
-- 数据可视化展示
-- 健康趋势分析
-- 数据导出功能
-
-### 3. AI健康助手
-- 智能健康问答
-- 个性化健康建议
-- 基于健康数据的分析
-- 对话历史记录
-
-### 4. 健康知识中心
-- 健康知识文章浏览
-- 分类检索功能
-- 内容搜索
-- 收藏和分享
-
-## 开发计划
-
-- [ ] 大模型集成（GPT等）
-- [ ] 区块链数据存储
-- [ ] 数据可视化图表
-- [ ] 健康报告生成
-
-## 贡献指南
-
-1. Fork 本项目
-2. 创建特性分支 (`git checkout -b feature/AmazingFeature`)
-3. 提交更改 (`git commit -m 'Add some AmazingFeature'`)
-4. 推送到分支 (`git push origin feature/AmazingFeature`)
-5. 打开 Pull Request
-
-## 许可证
-
-本项目采用 MIT 许可证 - 查看 [LICENSE](LICENSE) 文件了解详情。
-
-## 联系方式
-
-如有问题或建议，请通过以下方式联系：
-
-- 邮箱: health@example.com
-- 项目地址: https://github.com/your-username/health-management-system
+### 链上
+- Solidity 合约（`HealthDataAccess.sol` / `UserAuth.sol`）
+- Ganache（默认 `http://127.0.0.1:7545`）
 
 ---
 
-**注意**: 这是一个演示项目，生产环境使用前请进行充分的安全测试和性能优化。
+## 按功能域分类后的项目结构
+
+```text
+健康管理系统/
+├─ backend/
+│  ├─ app/
+│  │  ├─ main.py
+│  │  ├─ config.py
+│  │  ├─ database.py
+│  │  ├─ models.py
+│  │  ├─ schemas.py
+│  │  ├─ features/
+│  │  │  ├─ auth/            # 登录注册、鉴权依赖、个人资料
+│  │  │  ├─ health_data/     # 健康数据 CRUD、公开/私密、分析
+│  │  │  ├─ knowledge/       # 健康文章与阅读行为
+│  │  │  ├─ ai/              # AI 对话与建议
+│  │  │  ├─ blockchain/      # 区块链交互与加解密
+│  │  │  └─ admin/           # 系统设置与系统日志
+│  │  ├─ routers/            # 预留（当前已迁移到 features）
+│  │  └─ services/           # 预留（当前已迁移到 features）
+│  ├─ seed_health.sql        # 一键初始化数据库结构与种子数据
+│  └─ requirements.txt
+├─ frontend/
+│  ├─ src/
+│  │  ├─ views/
+│  │  │  └─ admin/           # 管理端页面（系统设置/日志等）
+│  │  ├─ api/
+│  │  │  ├─ core/http.js     # 统一 HTTP 客户端
+│  │  │  └─ modules/         # 按功能 API 模块拆分
+│  │  └─ router/
+└─ contracts/
+```
+
+---
+
+## 快速启动
+
+## 1) 初始化数据库（推荐）
+
+```bash
+mysql -u root -p < backend/seed_health.sql
+```
+
+> `seed_health.sql` 为重建型脚本，执行会清空并重建表结构。
+
+## 2) 启动后端
+
+```bash
+cd backend
+python -m venv venv
+venv\Scripts\activate   # Windows
+pip install -r requirements.txt
+uvicorn app.main:app --reload --host 0.0.0.0 --port 8000
+```
+
+## 3) 启动前端
+
+```bash
+cd frontend
+npm install
+npm run dev
+```
+
+前端默认访问：`http://localhost:3000`
+
+---
+
+## 环境变量（后端）
+
+可通过环境变量覆盖 `backend/app/config.py` 默认值：
+
+- `DB_HOST` / `DB_PORT` / `DB_USER` / `DB_PASSWORD` / `DB_NAME`
+- `SECRET_KEY`
+- `ADMIN_USERNAME` / `ADMIN_EMAIL` / `ADMIN_PASSWORD` / `ADMIN_REGISTER_KEY`
+- `WEB3_PROVIDER_URI`（默认 `http://127.0.0.1:7545`）
+- `HEALTH_DATA_CONTRACT_ADDRESS`
+- `HEALTH_DATA_CONTRACT_ABI_JSON`
+
+---
+
+## 区块链与隐私说明
+
+1. 用户注册成功后返回一次性 `generated_private_key`。  
+2. 数据库只保存 `private_key_hash`，不保存明文私钥。  
+3. 私密数据（个人资料、私密健康记录）需提供私钥才可解密查看。  
+4. 公开数据可直接访问（公开接口或公开资料接口）。  
+5. 若配置了合约地址和 ABI，健康数据会触发可选上链写入（保存交易哈希）。
+
+---
+
+## 默认种子账号
+
+由后端启动初始化自动确保存在：
+
+- 管理员：`admin / admin123`
+- 普通用户：`xiaoming / 123456`
+- 普通用户：`xiaohong / 123456`
+
+管理员注册密钥默认：`123`
+
+---
+
+## API 文档
+
+- Swagger: `http://localhost:8000/docs`
+- ReDoc: `http://localhost:8000/redoc`
+
+---
+
+## 说明
+
+该项目面向教学与原型验证。生产使用前请补充：
+
+- 完整迁移体系（Alembic）
+- 密钥托管与轮换机制
+- 更细粒度审计与告警
+- 安全压测与备份策略
