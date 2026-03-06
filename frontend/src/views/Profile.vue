@@ -13,7 +13,11 @@
         </div>
       </div>
       <div class="header-actions">
-        <el-button type="primary" class="save-btn">
+        <el-button v-if="needsPrivateKeyUnlock" class="save-btn" @click="unlockProfile">
+          <el-icon><Lock /></el-icon>
+          解锁私密资料
+        </el-button>
+        <el-button type="primary" class="save-btn" :loading="saving" @click="handleSave">
           <el-icon><Check /></el-icon>
           保存更改
         </el-button>
@@ -37,6 +41,7 @@
                 <h2>{{ profileData.username || '用户' }}</h2>
                 <p class="user-role">{{ roleText }}</p>
                 <p class="user-email">{{ profileData.email || '-' }}</p>
+                <p class="user-email">钱包地址：{{ walletAddress || '-' }}</p>
               </div>
             </div>
           </el-card>
@@ -87,6 +92,25 @@
               </div>
             </div>
           </el-card>
+
+          <el-card class="private-key-card" shadow="hover">
+            <div class="card-header">
+              <h3>私钥查看</h3>
+            </div>
+            <p class="private-key-tip">点击查看时需验证登录密码，请妥善保管私钥。</p>
+            <el-button type="warning" plain :loading="revealingPrivateKey" @click="handleRevealPrivateKey">
+              查看私钥
+            </el-button>
+            <el-input
+              v-if="privateKeyText"
+              v-model="privateKeyText"
+              type="textarea"
+              :rows="2"
+              readonly
+              class="private-key-input"
+            />
+            <el-button v-if="privateKeyText" text @click="copyPrivateKey">复制私钥</el-button>
+          </el-card>
         </el-col>
         
         <el-col :span="16">
@@ -133,6 +157,14 @@
                   type="textarea"
                   :rows="4"
                   placeholder="请输入个人简介"
+                />
+              </el-form-item>
+
+              <el-form-item label="资料可见性">
+                <el-switch
+                  v-model="profileIsPublic"
+                  active-text="公开（他人可查看）"
+                  inactive-text="私密（需私钥）"
                 />
               </el-form-item>
             </el-form>
@@ -184,8 +216,8 @@
 
 <script setup>
 import { computed, onMounted, ref } from 'vue'
-import { ElMessage } from 'element-plus'
-import { getCurrentUserProfile } from '../api/auth'
+import { ElMessage, ElMessageBox } from 'element-plus'
+import { getCurrentUserProfile, getMyProfileData, revealMyPrivateKey, upsertMyProfileData } from '../api/auth'
 import { healthApi } from '../api/health'
 import { aiApi } from '../api/ai'
 
@@ -202,6 +234,13 @@ const stats = ref({
   aiConsultations: 0,
   reminders: 0
 })
+
+const saving = ref(false)
+const walletAddress = ref('')
+const profileIsPublic = ref(false)
+const needsPrivateKeyUnlock = ref(false)
+const privateKeyText = ref('')
+const revealingPrivateKey = ref(false)
 
 const roleText = computed(() => (profileData.value.role === 'admin' ? '管理员' : '普通用户'))
 
@@ -222,6 +261,84 @@ const settings = ref({
   emailNotification: true
 })
 
+const toDateInputValue = (value) => {
+  if (!value) return ''
+  if (value instanceof Date && !Number.isNaN(value.getTime())) {
+    return value.toISOString().slice(0, 10)
+  }
+  return String(value).slice(0, 10)
+}
+
+const handleRevealPrivateKey = async () => {
+  try {
+    const promptResult = await ElMessageBox.prompt('请输入当前登录密码后查看私钥', '查看私钥', {
+      inputType: 'password',
+      inputPlaceholder: '请输入登录密码',
+      confirmButtonText: '查看',
+      cancelButtonText: '取消'
+    })
+
+    revealingPrivateKey.value = true
+    const result = await revealMyPrivateKey(promptResult.value)
+    privateKeyText.value = result?.private_key || ''
+    ElMessage.success('私钥已显示，请注意安全')
+  } catch (error) {
+    if (error === 'cancel' || error === 'close') return
+    ElMessage.error(error.response?.data?.detail || error.message || '查看私钥失败')
+  } finally {
+    revealingPrivateKey.value = false
+  }
+}
+
+const copyPrivateKey = async () => {
+  if (!privateKeyText.value) return
+  try {
+    await navigator.clipboard.writeText(privateKeyText.value)
+    ElMessage.success('私钥已复制')
+  } catch {
+    ElMessage.error('复制失败，请手动复制')
+  }
+}
+
+const normalizeSettings = (value = {}) => ({
+  healthReminder: value.healthReminder ?? true,
+  aiNotification: value.aiNotification ?? true,
+  systemUpdate: value.systemUpdate ?? false,
+  emailNotification: value.emailNotification ?? true
+})
+
+const applyProfilePayload = (rawProfileData) => {
+  if (!rawProfileData) return
+
+  try {
+    const parsed = JSON.parse(rawProfileData)
+    const basic = parsed?.basic || {}
+    userForm.value.realName = basic.realName || ''
+    userForm.value.phone = basic.phone || ''
+    userForm.value.gender = basic.gender || 'male'
+    userForm.value.birthday = toDateInputValue(basic.birthday)
+    userForm.value.bio = basic.bio || ''
+    settings.value = normalizeSettings(parsed?.settings)
+  } catch {
+    userForm.value.bio = rawProfileData
+  }
+}
+
+const buildProfilePayload = () => {
+  const payload = {
+    basic: {
+      realName: userForm.value.realName || '',
+      phone: userForm.value.phone || '',
+      gender: userForm.value.gender || 'male',
+      birthday: toDateInputValue(userForm.value.birthday),
+      bio: userForm.value.bio || ''
+    },
+    settings: normalizeSettings(settings.value)
+  }
+
+  return JSON.stringify(payload)
+}
+
 const formatDate = (value, dateOnly = false) => {
   if (!value) return '-'
   const date = new Date(value)
@@ -234,8 +351,82 @@ const loadProfile = async () => {
     profileData.value = user
     userForm.value.username = user.username || ''
     userForm.value.email = user.email || ''
+
+    const profile = await getMyProfileData()
+    profileIsPublic.value = !!profile?.profile_is_public
+    walletAddress.value = profile?.wallet_address || ''
+    needsPrivateKeyUnlock.value = false
+    applyProfilePayload(profile?.profile_data)
   } catch (error) {
-    ElMessage.error(error.response?.data?.detail || '加载个人信息失败')
+    const detail = error.response?.data?.detail
+    if (typeof detail === 'string' && detail.includes('private_key')) {
+      needsPrivateKeyUnlock.value = true
+      ElMessage.warning('当前资料是私密的，请先解锁后查看详情')
+      return
+    }
+    ElMessage.error(detail || '加载个人信息失败')
+  }
+}
+
+const unlockProfile = async () => {
+  try {
+    const { value: privateKey } = await ElMessageBox.prompt('请输入注册时保存的私钥以解锁资料', '解锁私密资料', {
+      inputType: 'password',
+      inputPlaceholder: '0x 开头私钥',
+      confirmButtonText: '解锁',
+      cancelButtonText: '取消'
+    })
+
+    const profile = await getMyProfileData(privateKey)
+    profileIsPublic.value = !!profile?.profile_is_public
+    walletAddress.value = profile?.wallet_address || ''
+    needsPrivateKeyUnlock.value = false
+    applyProfilePayload(profile?.profile_data)
+    ElMessage.success('资料已解锁')
+  } catch (error) {
+    if (error === 'cancel') return
+    ElMessage.error(error.response?.data?.detail || error.message || '解锁失败')
+  }
+}
+
+const handleSave = async () => {
+  try {
+    saving.value = true
+    let response
+    try {
+      response = await upsertMyProfileData({
+        profile_data: buildProfilePayload(),
+        is_public: profileIsPublic.value
+      })
+    } catch (error) {
+      const detail = error?.response?.data?.detail
+      if (typeof detail === 'string' && detail.includes('private_key')) {
+        const promptResult = await ElMessageBox.prompt('当前数据需原始私钥，请输入后继续保存', '验证身份', {
+          inputType: 'password',
+          inputPlaceholder: '0x 开头私钥',
+          confirmButtonText: '保存',
+          cancelButtonText: '取消'
+        })
+
+        response = await upsertMyProfileData({
+          profile_data: buildProfilePayload(),
+          private_key: promptResult.value,
+          is_public: profileIsPublic.value
+        })
+      } else {
+        throw error
+      }
+    }
+
+    walletAddress.value = response?.wallet_address || walletAddress.value
+    profileIsPublic.value = !!response?.profile_is_public
+    needsPrivateKeyUnlock.value = false
+    ElMessage.success('个人中心已保存')
+  } catch (error) {
+    if (error === 'cancel' || error === 'close') return
+    ElMessage.error(error.response?.data?.detail || error.message || '保存失败')
+  } finally {
+    saving.value = false
   }
 }
 
@@ -333,6 +524,24 @@ onMounted(() => {
   border: 1px solid #e8f2ff;
   margin-bottom: 24px;
   box-shadow: 0 10px 24px rgba(15, 23, 42, 0.06);
+}
+
+.private-key-card {
+  border-radius: 16px;
+  border: 1px solid #ffe4bf;
+  margin-bottom: 0;
+  box-shadow: 0 10px 24px rgba(245, 158, 11, 0.12);
+}
+
+.private-key-tip {
+  color: #92400e;
+  font-size: 13px;
+  line-height: 1.6;
+  margin: 0 0 12px;
+}
+
+.private-key-input {
+  margin-top: 12px;
 }
 
 .profile-avatar-section {

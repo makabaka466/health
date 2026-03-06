@@ -102,12 +102,12 @@ const routes = [
       {
         path: 'settings',
         name: 'AdminSettings',
-        component: () => import('../views/Profile.vue')
+        component: () => import('../views/admin/AdminSettings.vue')
       },
       {
         path: 'logs',
         name: 'AdminLogs',
-        component: () => import('../views/Profile.vue')
+        component: () => import('../views/admin/AdminLogs.vue')
       }
     ]
   }

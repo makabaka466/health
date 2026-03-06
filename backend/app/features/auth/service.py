@@ -1,9 +1,15 @@
+import base64
+import hashlib
+
+from cryptography.fernet import Fernet, InvalidToken
 from passlib.context import CryptContext
 from passlib.exc import UnknownHashError
 from sqlalchemy.orm import Session
+from eth_account import Account
 
 from app import models, schemas
 from app.config import settings
+from app.features.blockchain.encryption import normalize_private_key, private_key_hash
 
 
 pwd_context = CryptContext(schemes=["pbkdf2_sha256"], deprecated="auto")
@@ -16,7 +22,23 @@ class AuthService:
         """初始化服务并注入当前请求的数据库会话。"""
         self.db = db
 
-    async def register(self, user: schemas.UserCreate) -> models.User:
+    @staticmethod
+    def _build_server_fernet() -> Fernet:
+        digest = hashlib.sha256((settings.SECRET_KEY or "").encode("utf-8")).digest()
+        return Fernet(base64.urlsafe_b64encode(digest))
+
+    @classmethod
+    def encrypt_private_key_for_storage(cls, private_key: str) -> str:
+        return cls._build_server_fernet().encrypt(normalize_private_key(private_key).encode("utf-8")).decode("utf-8")
+
+    @classmethod
+    def decrypt_private_key_from_storage(cls, encrypted_value: str) -> str:
+        try:
+            return cls._build_server_fernet().decrypt((encrypted_value or "").encode("utf-8")).decode("utf-8")
+        except InvalidToken as exc:
+            raise ValueError("私钥存储损坏，无法解密") from exc
+
+    async def register(self, user: schemas.UserCreate) -> tuple[models.User, str]:
         """注册用户：支持普通用户与管理员（需管理员密钥）注册。"""
         existing_user = self.db.query(models.User).filter(models.User.username == user.username).first()
         if existing_user:
@@ -33,10 +55,16 @@ class AuthService:
         role_description = "系统管理员" if requested_role == "admin" else "普通用户"
         role_ref = self._get_or_create_role(requested_role, role_description)
 
+        account = Account.create()
+        generated_private_key = normalize_private_key(account.key.hex())
+
         db_user = models.User(
             username=user.username,
             email=user.email,
             password_hash=self.hash_password(user.password),
+            wallet_address=account.address,
+            private_key_hash=private_key_hash(generated_private_key),
+            encrypted_private_key=self.encrypt_private_key_for_storage(generated_private_key),
             role=requested_role,
             role_id=role_ref.id,
             is_active=True,
@@ -45,7 +73,7 @@ class AuthService:
         self.db.commit()
         self.db.refresh(db_user)
 
-        return db_user
+        return db_user, generated_private_key
 
     async def authenticate(self, username: str, password: str) -> models.User | None:
         """用户名密码认证：成功返回用户对象，失败返回 None。"""
@@ -68,6 +96,15 @@ class AuthService:
     async def get_user_by_username(self, username: str) -> models.User | None:
         """按用户名查询用户，用于 token 反查当前登录人。"""
         return self.db.query(models.User).filter(models.User.username == username).first()
+
+    def reveal_private_key(self, user: models.User, password: str) -> str:
+        if not self.verify_password(password, user.password_hash):
+            raise ValueError("密码错误")
+
+        if not user.encrypted_private_key:
+            raise ValueError("当前账号暂不支持查看私钥，请使用注册时保存的私钥")
+
+        return self.decrypt_private_key_from_storage(user.encrypted_private_key)
 
     def _get_or_create_role(self, role_name: str, description: str) -> models.Role:
         """获取或创建身份记录（roles 表），避免注册时缺少 role。"""

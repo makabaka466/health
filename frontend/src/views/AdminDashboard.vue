@@ -133,10 +133,6 @@
                     <el-icon><Setting /></el-icon>
                     设置
                   </el-dropdown-item>
-                  <el-dropdown-item command="userLogin">
-                    <el-icon><SwitchButton /></el-icon>
-                    切换到用户端
-                  </el-dropdown-item>
                   <el-dropdown-item divided command="logout">
                     <el-icon><SwitchButton /></el-icon>
                     退出登录
@@ -200,22 +196,6 @@ const handleCommand = async (command) => {
     case 'settings':
       router.push('/admin/settings')
       break
-    case 'userLogin':
-      try {
-        await ElMessageBox.confirm('确定要切换到用户端吗？', '提示', {
-          confirmButtonText: '确定',
-          cancelButtonText: '取消',
-          type: 'info'
-        })
-        localStorage.removeItem('adminToken')
-        localStorage.removeItem('adminUsername')
-        localStorage.removeItem('userRole')
-        ElMessage.success('已切换到用户端')
-        router.push('/login')
-      } catch {
-        // 用户取消
-      }
-      break
     case 'logout':
       try {
         await ElMessageBox.confirm('确定要退出登录吗？', '提示', {
@@ -223,11 +203,18 @@ const handleCommand = async (command) => {
           cancelButtonText: '取消',
           type: 'warning'
         })
+
         localStorage.removeItem('adminToken')
         localStorage.removeItem('adminUsername')
+        localStorage.removeItem('token')
+        localStorage.removeItem('username')
         localStorage.removeItem('userRole')
+
         ElMessage.success('已退出登录')
-        router.push('/admin/login')
+
+        if (route.path !== '/admin/login') {
+          router.replace('/admin/login')
+        }
       } catch {
         // 用户取消
       }

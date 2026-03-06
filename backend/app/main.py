@@ -3,7 +3,11 @@
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from app.database import init_db
-from app.routers import ai_assistant, auth, health_data, knowledge
+from app.features.admin.router import router as admin_system_router
+from app.features.ai.router import router as ai_assistant_router
+from app.features.auth.router import router as auth_router
+from app.features.health_data.router import router as health_data_router
+from app.features.knowledge.router import router as knowledge_router
 
  
 app = FastAPI(
@@ -28,10 +32,11 @@ app.add_middleware(
 
  
 # 注册路由
-app.include_router(auth.router, prefix="/api/auth", tags=["认证"])
-app.include_router(health_data.router, prefix="/api/health", tags=["健康数据"])
-app.include_router(ai_assistant.router, prefix="/api/ai", tags=["AI聊天"])
-app.include_router(knowledge.router, prefix="/api/knowledge", tags=["健康知识"])
+app.include_router(auth_router, prefix="/api/auth", tags=["认证"])
+app.include_router(health_data_router, prefix="/api/health", tags=["健康数据"])
+app.include_router(ai_assistant_router, prefix="/api/ai", tags=["AI聊天"])
+app.include_router(knowledge_router, prefix="/api/knowledge", tags=["健康知识"])
+app.include_router(admin_system_router, prefix="/api/admin/system", tags=["管理员系统"])
 
 
 @app.on_event("startup")

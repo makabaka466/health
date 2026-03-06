@@ -27,6 +27,12 @@ class User(Base):
     username = Column(String(50), unique=True, index=True, nullable=False)
     email = Column(String(255), unique=True, index=True, nullable=False)
     password_hash = Column(String(255), nullable=False)
+    wallet_address = Column(String(42), unique=True, index=True, nullable=True)
+    private_key_hash = Column(String(128), nullable=True)
+    encrypted_private_key = Column(Text, nullable=True)
+    encrypted_profile_data = Column(Text, nullable=True)
+    public_profile_data = Column(Text, nullable=True)
+    profile_is_public = Column(Boolean, default=False, nullable=False)
     role = Column(String(20), default="user", nullable=False)
     role_id = Column(Integer, ForeignKey("roles.id", ondelete="SET NULL"), nullable=True, index=True)
     is_active = Column(Boolean, default=True, nullable=False)
@@ -49,9 +55,14 @@ class HealthData(Base):
     user_id = Column(Integer, ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True)
     data_title = Column(String(255), nullable=True)
     data_content = Column(Text, nullable=True)
+    encrypted_data_content = Column(Text, nullable=True)
     pdf_data = Column(LargeBinary, nullable=True)
+    encrypted_pdf_data = Column(LargeBinary, nullable=True)
     file_type = Column(Enum("text", "pdf", name="health_data_file_type"), nullable=False, default="text", index=True)
     pdf_size = Column(Integer, nullable=True)
+    is_public = Column(Boolean, default=False, nullable=False, index=True)
+    onchain_data_id = Column(String(66), nullable=True)
+    onchain_tx_hash = Column(String(66), nullable=True)
     created_at = Column(DateTime, server_default=func.now(), nullable=False)
     updated_at = Column(DateTime, server_default=func.now(), onupdate=func.now(), nullable=False)
 
@@ -121,3 +132,30 @@ class ArticleReadHistory(Base):
 
     user = relationship("User", back_populates="article_reads")
     article = relationship("HealthArticle", back_populates="read_histories")
+
+
+class SystemSetting(Base):
+    """系统设置表：保存管理员可配置的系统级参数。"""
+
+    __tablename__ = "system_settings"
+
+    id = Column(Integer, primary_key=True, index=True)
+    setting_key = Column(String(100), nullable=False, unique=True, index=True)
+    setting_value = Column(Text, nullable=False)
+    updated_by = Column(Integer, ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
+    created_at = Column(DateTime, server_default=func.now(), nullable=False)
+    updated_at = Column(DateTime, server_default=func.now(), onupdate=func.now(), nullable=False)
+
+
+class SystemLog(Base):
+    """系统日志表：记录关键管理行为，方便审计。"""
+
+    __tablename__ = "system_logs"
+
+    id = Column(Integer, primary_key=True, index=True)
+    level = Column(String(20), nullable=False, default="INFO", index=True)
+    module = Column(String(100), nullable=False, index=True)
+    action = Column(String(100), nullable=False)
+    message = Column(Text, nullable=False)
+    operator_id = Column(Integer, ForeignKey("users.id", ondelete="SET NULL"), nullable=True, index=True)
+    created_at = Column(DateTime, server_default=func.now(), nullable=False, index=True)

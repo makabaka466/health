@@ -1,25 +1,53 @@
+import json
 from fastapi import APIRouter, Depends, HTTPException, Query, status
-from fastapi.security import OAuth2PasswordBearer, OAuth2PasswordRequestForm
+from fastapi.security import OAuth2PasswordRequestForm
 from sqlalchemy.orm import Session
-from datetime import datetime, timedelta
-from jose import JWTError, jwt
+from datetime import timedelta
 from app.config import settings
 from app.database import get_db
 from app import models
-from app.schemas import AdminUserListResponse, AdminUserResponse, Token, UserCreate, UserResponse
-from app.services.auth_service import AuthService
+from app.features.auth.dependencies import create_access_token, get_current_admin, get_current_user
+from app.schemas import (
+    AdminUserListResponse,
+    AdminUserResponse,
+    Token,
+    UserCreate,
+    UserPrivateKeyRevealRequest,
+    UserPrivateKeyRevealResponse,
+    UserProfileResponse,
+    UserProfileUpsertRequest,
+    UserRegisterResponse,
+    UserResponse,
+)
+from app.features.auth.service import AuthService
+from app.features.auth.profile_service import UserProfileService
 
 router = APIRouter()
-oauth2_scheme = OAuth2PasswordBearer(tokenUrl="api/auth/login")
-SECRET_KEY = settings.SECRET_KEY
-ALGORITHM = settings.ALGORITHM
 
-@router.post("/register", response_model=UserResponse)
+
+def _get_bool_system_setting(db: Session, key: str, default_value: bool) -> bool:
+    row = db.query(models.SystemSetting).filter(models.SystemSetting.setting_key == key).first()
+    if not row:
+        return default_value
+    try:
+        value = json.loads(row.setting_value)
+        return bool(value)
+    except Exception:  # noqa: BLE001
+        return default_value
+
+@router.post("/register", response_model=UserRegisterResponse)
 async def register(user: UserCreate, db: Session = Depends(get_db)):
     """用户注册接口：创建普通用户账号并返回基础资料。"""
+    if not _get_bool_system_setting(db, "allow_user_register", True):
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="当前系统已关闭用户注册")
+
     auth_service = AuthService(db)
     try:
-        return await auth_service.register(user)
+        db_user, generated_private_key = await auth_service.register(user)
+        return {
+            **UserResponse.model_validate(db_user).model_dump(),
+            "generated_private_key": generated_private_key,
+        }
     except ValueError as exc:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
 
@@ -79,41 +107,56 @@ async def admin_login(form_data: OAuth2PasswordRequestForm = Depends(), db: Sess
         "role": user.role,
     }
 
-async def get_current_user(token: str = Depends(oauth2_scheme), db: Session = Depends(get_db)):
-    """依赖函数：解析 token 并返回当前登录用户信息。"""
-    credentials_exception = HTTPException(
-        status_code=status.HTTP_401_UNAUTHORIZED,
-        detail="无法验证凭据",
-        headers={"WWW-Authenticate": "Bearer"},
+@router.post("/me/profile", response_model=UserProfileResponse)
+async def upsert_my_profile(
+    payload: UserProfileUpsertRequest,
+    db: Session = Depends(get_db),
+    current_user: models.User = Depends(get_current_user),
+):
+    service = UserProfileService(db)
+    return service.upsert_profile(
+        user=current_user,
+        profile_data=payload.profile_data,
+        private_key=payload.private_key,
+        is_public=payload.is_public,
     )
-    
-    try:
-        payload = jwt.decode(token, SECRET_KEY, algorithms=[ALGORITHM])
-        username: str = payload.get("sub")
-        if username is None:
-            raise credentials_exception
-    except JWTError:
-        raise credentials_exception
-    
-    auth_service = AuthService(db)
-    user = await auth_service.get_user_by_username(username)
-    if user is None:
-        raise credentials_exception
-
-    return user
 
 
-async def get_current_admin(current_user: models.User = Depends(get_current_user)) -> models.User:
-    user_role = current_user.role_ref.name if current_user.role_ref else current_user.role
-    if user_role not in {"admin", "super_admin"}:
-        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="仅管理员可访问")
-    return current_user
+@router.get("/me/profile", response_model=UserProfileResponse)
+async def get_my_profile(
+    private_key: str | None = None,
+    db: Session = Depends(get_db),
+    current_user: models.User = Depends(get_current_user),
+):
+    service = UserProfileService(db)
+    return service.get_my_profile(user=current_user, private_key=private_key)
+
+
+@router.get("/profiles/{user_id}", response_model=UserProfileResponse)
+async def get_user_public_profile(user_id: int, db: Session = Depends(get_db)):
+    service = UserProfileService(db)
+    return service.get_public_profile(user_id)
 
 
 @router.get("/me", response_model=UserResponse)
 async def get_me(current_user: models.User = Depends(get_current_user)):
     """当前用户接口：返回当前登录用户信息。"""
     return current_user
+
+
+@router.post("/me/private-key", response_model=UserPrivateKeyRevealResponse)
+async def reveal_my_private_key(
+    payload: UserPrivateKeyRevealRequest,
+    db: Session = Depends(get_db),
+    current_user: models.User = Depends(get_current_user),
+):
+    auth_service = AuthService(db)
+    try:
+        private_key = auth_service.reveal_private_key(current_user, payload.password)
+    except ValueError as exc:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
+
+    return {"private_key": private_key}
 
 
 @router.get("/admin/users", response_model=AdminUserListResponse)
@@ -199,15 +242,3 @@ async def reset_admin_user_password(
     user.password_hash = AuthService.hash_password("123456")
     db.commit()
     return {"message": f"用户 {user.username} 密码已重置为初始密码", "initial_password": "123456"}
-
-def create_access_token(data: dict, expires_delta: timedelta = None):
-    """创建 JWT 访问令牌，可传入过期时间覆盖默认值。"""
-    to_encode = data.copy()
-    if expires_delta:
-        expire = datetime.utcnow() + expires_delta
-    else:
-        expire = datetime.utcnow() + timedelta(minutes=15)
-    
-    to_encode.update({"exp": expire})
-    encoded_jwt = jwt.encode(to_encode, SECRET_KEY, algorithm=ALGORITHM)
-    return encoded_jwt

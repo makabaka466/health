@@ -27,7 +27,13 @@ class Settings:
     # API配置
     API_V1_STR: str = "/api"
     PROJECT_NAME: str = "健康管理系统"
-    
+
+    # 链上配置（Ganache / EVM）
+    WEB3_PROVIDER_URI: str = os.getenv("WEB3_PROVIDER_URI", "http://127.0.0.1:7545")
+    HEALTH_DATA_CONTRACT_ADDRESS: Optional[str] = os.getenv("HEALTH_DATA_CONTRACT_ADDRESS")
+    # 合约 ABI 建议用 JSON 字符串放环境变量；未配置时后端自动降级为“仅数据库模式”
+    HEALTH_DATA_CONTRACT_ABI_JSON: Optional[str] = os.getenv("HEALTH_DATA_CONTRACT_ABI_JSON")
+
     # 跨域配置
     BACKEND_CORS_ORIGINS: list = ["http://localhost:3000", "http://localhost:8080"]
 

@@ -16,6 +16,7 @@ class UserResponse(UserBase):
     id: int
     role: str
     is_active: bool
+    wallet_address: Optional[str] = None
     created_at: datetime
     
     class Config:
@@ -115,6 +116,31 @@ class Token(BaseModel):
     username: Optional[str] = None
     role: Optional[str] = None
 
+
+class UserRegisterResponse(UserResponse):
+    generated_private_key: Optional[str] = None
+
+
+class UserProfileUpsertRequest(BaseModel):
+    profile_data: str
+    private_key: Optional[str] = None
+    is_public: bool = False
+
+
+class UserProfileResponse(BaseModel):
+    user_id: int
+    wallet_address: Optional[str] = None
+    profile_is_public: bool
+    profile_data: Optional[str] = None
+
+
+class UserPrivateKeyRevealRequest(BaseModel):
+    password: str
+
+
+class UserPrivateKeyRevealResponse(BaseModel):
+    private_key: str
+
 # 健康数据Schema
 class HealthDataBase(BaseModel):
     data_title: Optional[str] = None
@@ -122,16 +148,19 @@ class HealthDataBase(BaseModel):
     file_type: str = "text"
     pdf_data_base64: Optional[str] = None
     pdf_size: Optional[int] = None
+    is_public: bool = False
 
 class HealthDataCreate(HealthDataBase):
-    pass
+    private_key: Optional[str] = None
 
 class HealthDataUpdate(HealthDataBase):
-    pass
+    private_key: Optional[str] = None
 
 class HealthDataResponse(HealthDataBase):
     id: int
     user_id: int
+    requires_private_key: bool = False
+    onchain_tx_hash: Optional[str] = None
     created_at: datetime
     updated_at: datetime
     
@@ -163,5 +192,26 @@ class KnowledgeResponse(KnowledgeBase):
     created_at: datetime
     updated_at: Optional[datetime] = None
     
+    class Config:
+        from_attributes = True
+
+
+class AdminSystemSettings(BaseModel):
+    project_name: str = "健康管理系统"
+    allow_user_register: bool = True
+    ai_enabled: bool = True
+    maintenance_mode: bool = False
+    default_health_data_public: bool = False
+
+
+class AdminSystemLogResponse(BaseModel):
+    id: int
+    level: str
+    module: str
+    action: str
+    message: str
+    operator_id: Optional[int] = None
+    created_at: datetime
+
     class Config:
         from_attributes = True
