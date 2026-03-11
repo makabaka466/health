@@ -33,6 +33,9 @@ class User(Base):
     encrypted_profile_data = Column(Text, nullable=True)
     public_profile_data = Column(Text, nullable=True)
     profile_is_public = Column(Boolean, default=False, nullable=False)
+    social_provider = Column(String(20), nullable=True, index=True)
+    social_open_id = Column(String(128), nullable=True, index=True)
+    social_nickname = Column(String(100), nullable=True)
     role = Column(String(20), default="user", nullable=False)
     role_id = Column(Integer, ForeignKey("roles.id", ondelete="SET NULL"), nullable=True, index=True)
     is_active = Column(Boolean, default=True, nullable=False)
@@ -101,6 +104,22 @@ class HealthArticle(Base):
 
     favorites = relationship("ArticleFavorite", back_populates="article", cascade="all, delete-orphan")
     read_histories = relationship("ArticleReadHistory", back_populates="article", cascade="all, delete-orphan")
+
+
+class RagKnowledgeDocument(Base):
+    """RAG 知识库文档：供 AI 问答检索增强使用。"""
+
+    __tablename__ = "rag_knowledge_documents"
+
+    id = Column(Integer, primary_key=True, index=True)
+    title = Column(String(200), nullable=False, index=True)
+    category = Column(String(50), nullable=False, index=True)
+    content = Column(Text, nullable=False)
+    source = Column(String(255), nullable=True)
+    tags = Column(String(500), nullable=True)
+    is_active = Column(Boolean, default=True, nullable=False, index=True)
+    created_at = Column(DateTime, server_default=func.now(), nullable=False)
+    updated_at = Column(DateTime, server_default=func.now(), onupdate=func.now(), nullable=False)
 
 
 class ArticleFavorite(Base):

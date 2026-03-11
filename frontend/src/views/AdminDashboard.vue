@@ -51,6 +51,13 @@
             </template>
           </el-menu-item>
 
+          <el-menu-item index="/admin/knowledge-base">
+            <el-icon><Document /></el-icon>
+            <template #title>
+              <span class="menu-title">知识库管理</span>
+            </template>
+          </el-menu-item>
+
           <el-menu-item index="/admin/articles">
             <el-icon><Reading /></el-icon>
             <template #title>
@@ -177,6 +184,7 @@ const currentPageName = computed(() => {
     '/admin/users': '用户管理',
     '/admin/health-data': '健康数据',
     '/admin/ai-chat': 'AI管理',
+    '/admin/knowledge-base': '知识库管理',
     '/admin/articles': '文章管理',
     '/admin/settings': '系统设置',
     '/admin/logs': '系统日志'

@@ -10,6 +10,9 @@ from app.features.auth.dependencies import create_access_token, get_current_admi
 from app.schemas import (
     AdminUserListResponse,
     AdminUserResponse,
+    SocialLoginInitRequest,
+    SocialLoginInitResponse,
+    SocialProfileCompleteRequest,
     Token,
     UserCreate,
     UserPrivateKeyRevealRequest,
@@ -34,6 +37,19 @@ def _get_bool_system_setting(db: Session, key: str, default_value: bool) -> bool
         return bool(value)
     except Exception:  # noqa: BLE001
         return default_value
+
+
+def _build_login_token(user: models.User) -> dict:
+    access_token_expires = timedelta(minutes=settings.ACCESS_TOKEN_EXPIRE_MINUTES)
+    access_token = create_access_token(
+        data={"sub": user.username}, expires_delta=access_token_expires
+    )
+    return {
+        "access_token": access_token,
+        "token_type": "bearer",
+        "username": user.username,
+        "role": user.role,
+    }
 
 @router.post("/register", response_model=UserRegisterResponse)
 async def register(user: UserCreate, db: Session = Depends(get_db)):
@@ -67,17 +83,43 @@ async def login(form_data: OAuth2PasswordRequestForm = Depends(), db: Session = 
     if not user.is_active:
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="账号已被禁用")
     
-    access_token_expires = timedelta(minutes=settings.ACCESS_TOKEN_EXPIRE_MINUTES)
-    access_token = create_access_token(
-        data={"sub": user.username}, expires_delta=access_token_expires
-    )
-    
-    return {
-        "access_token": access_token,
-        "token_type": "bearer",
-        "username": user.username,
-        "role": user.role,
-    }
+    return _build_login_token(user)
+
+
+@router.post("/social/login-init", response_model=SocialLoginInitResponse)
+async def social_login_init(payload: SocialLoginInitRequest, db: Session = Depends(get_db)):
+    auth_service = AuthService(db)
+    try:
+        result = await auth_service.social_login_init(payload)
+    except ValueError as exc:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
+
+    if result.get("need_profile_completion"):
+        return SocialLoginInitResponse(
+            need_profile_completion=True,
+            social_ticket=result.get("social_ticket"),
+            social_provider=result.get("social_provider"),
+            social_nickname=result.get("social_nickname"),
+            suggested_username=result.get("suggested_username"),
+        )
+
+    user = result["user"]
+    if not user.is_active:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="账号已被禁用")
+
+    token_payload = _build_login_token(user)
+    return SocialLoginInitResponse(need_profile_completion=False, **token_payload)
+
+
+@router.post("/social/complete", response_model=Token)
+async def social_profile_complete(payload: SocialProfileCompleteRequest, db: Session = Depends(get_db)):
+    auth_service = AuthService(db)
+    try:
+        user, _generated_private_key = await auth_service.complete_social_profile(payload)
+    except ValueError as exc:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
+
+    return _build_login_token(user)
 
 @router.post("/admin/login", response_model=Token)
 async def admin_login(form_data: OAuth2PasswordRequestForm = Depends(), db: Session = Depends(get_db)):

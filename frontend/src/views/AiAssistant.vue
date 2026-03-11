@@ -88,6 +88,18 @@
               </div>
               <div class="message-content">
                 <div class="message-text">{{ message.message }}</div>
+                <div v-if="!message.is_user && (message.personalization_used || (message.references && message.references.length))" class="message-extra">
+                  <el-tag v-if="message.personalization_used" size="small" effect="plain" type="success">已结合公开健康数据</el-tag>
+                  <el-tag
+                    v-for="(refItem, refIndex) in message.references || []"
+                    :key="`${message.id || index}-ref-${refIndex}`"
+                    size="small"
+                    effect="light"
+                    class="ref-tag"
+                  >
+                    {{ refItem }}
+                  </el-tag>
+                </div>
                 <div class="message-time">{{ formatTime(message.created_at) }}</div>
               </div>
             </div>
@@ -211,7 +223,9 @@ const sendMessage = async () => {
       id: Date.now() + 1,
       message: response.reply,
       is_user: false,
-      created_at: response.timestamp
+      created_at: response.timestamp,
+      references: response.references || [],
+      personalization_used: !!response.personalization_used
     }
     messages.value.push(aiMsg)
     
@@ -533,6 +547,17 @@ onMounted(() => {
   color: #94a3b8;
   margin-top: 4px;
   text-align: right;
+}
+
+.message-extra {
+  margin-top: 8px;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.ref-tag {
+  max-width: 260px;
 }
 
 .user-message .message-time {

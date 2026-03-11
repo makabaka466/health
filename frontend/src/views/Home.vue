@@ -59,6 +59,22 @@
         <el-button type="primary" plain @click="router.push('/dashboard/knowledge-center')">前往知识中心</el-button>
       </el-card>
     </div>
+
+    <div class="home-recommendations">
+      <h2 class="section-title">AI 个性化健康建议</h2>
+      <el-card class="recommend-empty" shadow="never">
+        <div class="ai-advice-head">
+          <p>{{ aiHomeAdvice.summary }}</p>
+          <el-tag type="success" effect="plain">基于公开记录 {{ aiHomeAdvice.based_on_public_records }} 条</el-tag>
+        </div>
+        <ul class="ai-advice-list">
+          <li v-for="(item, idx) in aiHomeAdvice.recommendations" :key="`rec-${idx}`">{{ item }}</li>
+        </ul>
+        <div v-if="aiHomeAdvice.insights.length" class="ai-insights">
+          <el-tag v-for="(insight, idx) in aiHomeAdvice.insights" :key="`insight-${idx}`" size="small" effect="light">{{ insight }}</el-tag>
+        </div>
+      </el-card>
+    </div>
     
     <!-- 快速操作卡片 -->
     <div class="quick-actions">
@@ -205,6 +221,7 @@
 import { ref, computed, onMounted } from 'vue'
 import { useRouter } from 'vue-router'
 import { knowledgeApi } from '../api/knowledge'
+import { aiApi } from '../api/ai'
 
 const router = useRouter()
 
@@ -240,6 +257,12 @@ const quickActions = ref([
 ])
 
 const pushedArticles = ref([])
+const aiHomeAdvice = ref({
+  summary: '正在生成个性化建议...',
+  recommendations: [],
+  insights: [],
+  based_on_public_records: 0
+})
 
 const recentActivities = ref([
   {
@@ -313,8 +336,28 @@ const loadRecommendations = async () => {
   }
 }
 
+const loadAiHomeAdvice = async () => {
+  try {
+    const data = await aiApi.getHomeAdvice()
+    aiHomeAdvice.value = {
+      summary: data?.summary || '暂无建议',
+      recommendations: data?.recommendations || [],
+      insights: data?.insights || [],
+      based_on_public_records: data?.based_on_public_records || 0
+    }
+  } catch {
+    aiHomeAdvice.value = {
+      summary: '个性化建议加载失败，请稍后再试。',
+      recommendations: [],
+      insights: [],
+      based_on_public_records: 0
+    }
+  }
+}
+
 onMounted(() => {
   loadRecommendations()
+  loadAiHomeAdvice()
   // 添加页面加载动画
   const observer = new IntersectionObserver((entries) => {
     entries.forEach(entry => {
@@ -548,8 +591,31 @@ onMounted(() => {
 
 .recommend-empty {
   border-radius: 14px;
-  border: 1px dashed #cbd5e1;
+  border: 1px dashed #d8e4f6;
+  background: #f8fbff;
   text-align: center;
+}
+
+.ai-advice-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 12px;
+  text-align: left;
+}
+
+.ai-advice-list {
+  margin: 14px 0 8px;
+  padding-left: 18px;
+  text-align: left;
+  color: #334155;
+  line-height: 1.8;
+}
+
+.ai-insights {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
 }
 
 .recommend-empty p {

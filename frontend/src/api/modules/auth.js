@@ -27,6 +27,14 @@ export async function revealMyPrivateKey(password) {
   return userApi.post('/auth/me/private-key', { password })
 }
 
+export async function socialLoginInit(payload) {
+  return userApi.post('/auth/social/login-init', payload)
+}
+
+export async function socialCompleteProfile(payload) {
+  return userApi.post('/auth/social/complete', payload)
+}
+
 export async function getAdminUsers(params = {}) {
   return adminApi.get('/auth/admin/users', { params })
 }

@@ -1,7 +1,9 @@
 import base64
 import hashlib
+from datetime import datetime, timedelta
 
 from cryptography.fernet import Fernet, InvalidToken
+from jose import JWTError, jwt
 from passlib.context import CryptContext
 from passlib.exc import UnknownHashError
 from sqlalchemy.orm import Session
@@ -13,6 +15,8 @@ from app.features.blockchain.encryption import normalize_private_key, private_ke
 
 
 pwd_context = CryptContext(schemes=["pbkdf2_sha256"], deprecated="auto")
+SOCIAL_TICKET_EXPIRE_MINUTES = 15
+SUPPORTED_SOCIAL_PROVIDERS = {"wechat", "alipay"}
 
 
 class AuthService:
@@ -52,20 +56,95 @@ class AuthService:
         if requested_role == "admin" and user.admin_register_key != settings.ADMIN_REGISTER_KEY:
             raise ValueError("管理员密钥错误")
 
-        role_description = "系统管理员" if requested_role == "admin" else "普通用户"
-        role_ref = self._get_or_create_role(requested_role, role_description)
+        return self._create_user_account(
+            username=user.username,
+            email=user.email,
+            password=user.password,
+            role=requested_role,
+        )
+
+    async def social_login_init(self, payload: schemas.SocialLoginInitRequest) -> dict:
+        provider = self._normalize_social_provider(payload.provider)
+        open_id, nickname = self._resolve_social_identity(provider, payload.auth_code, payload.nickname)
+
+        user = (
+            self.db.query(models.User)
+            .filter(models.User.social_provider == provider, models.User.social_open_id == open_id)
+            .first()
+        )
+        if user:
+            return {
+                "need_profile_completion": False,
+                "user": user,
+            }
+
+        social_ticket = self._build_social_ticket(provider=provider, open_id=open_id, nickname=nickname)
+        suggested_prefix = "wx" if provider == "wechat" else "ali"
+        suggested_username = f"{suggested_prefix}_{open_id[-6:]}"
+        return {
+            "need_profile_completion": True,
+            "social_ticket": social_ticket,
+            "social_provider": provider,
+            "social_nickname": nickname,
+            "suggested_username": suggested_username,
+        }
+
+    async def complete_social_profile(self, payload: schemas.SocialProfileCompleteRequest) -> tuple[models.User, str]:
+        provider, open_id, nickname = self._parse_social_ticket(payload.social_ticket)
+
+        existing_bind = (
+            self.db.query(models.User)
+            .filter(models.User.social_provider == provider, models.User.social_open_id == open_id)
+            .first()
+        )
+        if existing_bind:
+            raise ValueError("该第三方账号已绑定系统用户，请直接使用第三方登录")
+
+        return self._create_user_account(
+            username=payload.username,
+            email=payload.email,
+            password=payload.password,
+            role="user",
+            social_provider=provider,
+            social_open_id=open_id,
+            social_nickname=nickname,
+        )
+
+    def _create_user_account(
+        self,
+        username: str,
+        email: str,
+        password: str,
+        role: str = "user",
+        social_provider: str | None = None,
+        social_open_id: str | None = None,
+        social_nickname: str | None = None,
+    ) -> tuple[models.User, str]:
+        existing_user = self.db.query(models.User).filter(models.User.username == username).first()
+        if existing_user:
+            raise ValueError("用户名已存在")
+
+        existing_email = self.db.query(models.User).filter(models.User.email == email).first()
+        if existing_email:
+            raise ValueError("邮箱已存在")
+
+        role_description = "系统管理员" if role == "admin" else "普通用户"
+        role_ref = self._get_or_create_role(role, role_description)
 
         account = Account.create()
         generated_private_key = normalize_private_key(account.key.hex())
 
         db_user = models.User(
-            username=user.username,
-            email=user.email,
-            password_hash=self.hash_password(user.password),
+            username=username,
+            email=email,
+            password_hash=self.hash_password(password),
             wallet_address=account.address,
             private_key_hash=private_key_hash(generated_private_key),
             encrypted_private_key=self.encrypt_private_key_for_storage(generated_private_key),
-            role=requested_role,
+            social_provider=social_provider,
+            social_open_id=social_open_id,
+            social_nickname=social_nickname,
+            role=role,
             role_id=role_ref.id,
             is_active=True,
         )
@@ -74,6 +153,57 @@ class AuthService:
         self.db.refresh(db_user)
 
         return db_user, generated_private_key
+
+    @staticmethod
+    def _normalize_social_provider(provider: str) -> str:
+        normalized = (provider or "").strip().lower()
+        mapping = {
+            "wx": "wechat",
+            "wechat": "wechat",
+            "weixin": "wechat",
+            "ali": "alipay",
+            "alipay": "alipay",
+            "zhifubao": "alipay",
+        }
+        resolved = mapping.get(normalized)
+        if resolved not in SUPPORTED_SOCIAL_PROVIDERS:
+            raise ValueError("暂不支持该第三方登录渠道")
+        return resolved
+
+    @staticmethod
+    def _resolve_social_identity(provider: str, auth_code: str | None, nickname: str | None) -> tuple[str, str]:
+        code = (auth_code or f"demo_{provider}").strip()
+        digest = hashlib.sha256(f"{provider}:{code}".encode("utf-8")).hexdigest()
+        open_id = digest[:32]
+        default_nickname = f"{('微信' if provider == 'wechat' else '支付宝')}用户{digest[-4:]}"
+        return open_id, (nickname or default_nickname)
+
+    @staticmethod
+    def _build_social_ticket(provider: str, open_id: str, nickname: str) -> str:
+        expire = datetime.utcnow() + timedelta(minutes=SOCIAL_TICKET_EXPIRE_MINUTES)
+        payload = {
+            "typ": "social_ticket",
+            "provider": provider,
+            "open_id": open_id,
+            "nickname": nickname,
+            "exp": expire,
+        }
+        return jwt.encode(payload, settings.SECRET_KEY, algorithm=settings.ALGORITHM)
+
+    @staticmethod
+    def _parse_social_ticket(ticket: str) -> tuple[str, str, str]:
+        try:
+            payload = jwt.decode(ticket, settings.SECRET_KEY, algorithms=[settings.ALGORITHM])
+            if payload.get("typ") != "social_ticket":
+                raise ValueError("无效的第三方登录凭证")
+            provider = str(payload.get("provider") or "")
+            open_id = str(payload.get("open_id") or "")
+            nickname = str(payload.get("nickname") or "")
+            if not provider or not open_id:
+                raise ValueError("第三方登录凭证缺少必要字段")
+            return provider, open_id, nickname
+        except JWTError as exc:
+            raise ValueError("第三方登录凭证已失效，请重新登录") from exc
 
     async def authenticate(self, username: str, password: str) -> models.User | None:
         """用户名密码认证：成功返回用户对象，失败返回 None。"""

@@ -93,13 +93,13 @@
         
         <el-form-item>
           <div class="social-login">
-            <el-button class="social-btn wechat-btn" @click="handleSocialLogin('wechat')">
+            <el-button class="social-btn wechat-btn" :loading="socialLoading === 'wechat'" @click="handleSocialLogin('wechat')">
               <el-icon><ChatDotRound /></el-icon>
               微信登录
             </el-button>
-            <el-button class="social-btn qq-btn" @click="handleSocialLogin('qq')">
+            <el-button class="social-btn alipay-btn" :loading="socialLoading === 'alipay'" @click="handleSocialLogin('alipay')">
               <el-icon><ChatLineSquare /></el-icon>
-              QQ登录
+              支付宝登录
             </el-button>
           </div>
         </el-form-item>
@@ -143,6 +143,43 @@
         </div>
       </template>
     </el-dialog>
+
+    <el-dialog
+      v-model="socialProfileVisible"
+      title="首次第三方登录 - 完善资料"
+      width="460px"
+      append-to-body
+      :close-on-click-modal="false"
+    >
+      <el-alert
+        type="info"
+        show-icon
+        :closable="false"
+        class="social-alert"
+        :title="`欢迎使用${pendingProviderName}登录`"
+        :description="`首次登录请补全账号信息，后续可用${pendingProviderName}一键登录，也可用账号密码登录。`"
+      />
+
+      <el-form ref="socialFormRef" :model="socialProfileForm" :rules="socialRules" label-position="top">
+        <el-form-item label="用户名" prop="username">
+          <el-input v-model="socialProfileForm.username" clearable />
+        </el-form-item>
+        <el-form-item label="邮箱" prop="email">
+          <el-input v-model="socialProfileForm.email" clearable />
+        </el-form-item>
+        <el-form-item label="登录密码" prop="password">
+          <el-input v-model="socialProfileForm.password" type="password" show-password clearable />
+        </el-form-item>
+        <el-form-item label="确认密码" prop="confirmPassword">
+          <el-input v-model="socialProfileForm.confirmPassword" type="password" show-password clearable />
+        </el-form-item>
+      </el-form>
+
+      <template #footer>
+        <el-button @click="socialProfileVisible = false">取消</el-button>
+        <el-button type="primary" :loading="socialCompleteLoading" @click="handleSocialComplete">完成并登录</el-button>
+      </template>
+    </el-dialog>
   </div>
 </template>
 
@@ -150,20 +187,29 @@
 import { ref, reactive, computed, onMounted } from 'vue'
 import { useRouter, useRoute } from 'vue-router'
 import { ElMessage } from 'element-plus'
-import { loginUser } from '../api/auth'
+import { loginUser, socialCompleteProfile, socialLoginInit } from '../api/auth'
 
 const router = useRouter()
 const route = useRoute()
+
 const loginFormRef = ref()
 const forgotFormRef = ref()
+const socialFormRef = ref()
+
 const loading = ref(false)
 const forgotLoading = ref(false)
+const socialLoading = ref('')
+const socialCompleteLoading = ref(false)
+
 const rememberMe = ref(false)
 const forgotPasswordVisible = ref(false)
+const socialProfileVisible = ref(false)
+const socialTicket = ref('')
+const pendingProvider = ref('')
 
-// 从URL参数获取注册成功信息
 const queryRegistered = computed(() => route.query.registered === 'true')
 const queryUsername = computed(() => route.query.username || '')
+const pendingProviderName = computed(() => (pendingProvider.value === 'wechat' ? '微信' : '支付宝'))
 
 const loginForm = reactive({
   username: queryUsername.value || '',
@@ -172,6 +218,13 @@ const loginForm = reactive({
 
 const forgotForm = reactive({
   email: ''
+})
+
+const socialProfileForm = reactive({
+  username: '',
+  email: '',
+  password: '',
+  confirmPassword: ''
 })
 
 const loginRules = {
@@ -192,6 +245,32 @@ const forgotRules = {
   ]
 }
 
+const socialRules = {
+  username: [
+    { required: true, message: '请输入用户名', trigger: 'blur' },
+    { min: 3, max: 20, message: '用户名长度在 3 到 20 个字符', trigger: 'blur' },
+    { pattern: /^[a-zA-Z0-9_]+$/, message: '用户名只能包含字母、数字和下划线', trigger: 'blur' }
+  ],
+  email: [
+    { required: true, message: '请输入邮箱', trigger: 'blur' },
+    { type: 'email', message: '请输入正确的邮箱格式', trigger: 'blur' }
+  ],
+  password: [
+    { required: true, message: '请输入密码', trigger: 'blur' },
+    { min: 6, max: 20, message: '密码长度在 6 到 20 个字符', trigger: 'blur' }
+  ],
+  confirmPassword: [
+    {
+      validator: (_rule, value, callback) => {
+        if (!value) return callback(new Error('请再次输入密码'))
+        if (value !== socialProfileForm.password) return callback(new Error('两次输入的密码不一致'))
+        callback()
+      },
+      trigger: 'blur'
+    }
+  ]
+}
+
 const extractError = (error, fallback) => {
   const detail = error?.response?.data?.detail
   if (typeof detail === 'string') return detail
@@ -199,9 +278,24 @@ const extractError = (error, fallback) => {
   return fallback
 }
 
-const goToRegister = () => {
-  router.push('/register')
+const persistLogin = (payload, fallbackUsername = '') => {
+  const role = payload.role || 'user'
+  localStorage.setItem('userRole', role)
+  if (role === 'admin') {
+    localStorage.setItem('adminToken', payload.access_token)
+    localStorage.setItem('adminUsername', payload.username || fallbackUsername)
+    localStorage.removeItem('token')
+    localStorage.removeItem('username')
+  } else {
+    localStorage.setItem('token', payload.access_token)
+    localStorage.setItem('username', payload.username || fallbackUsername)
+    localStorage.removeItem('adminToken')
+    localStorage.removeItem('adminUsername')
+  }
+  router.push(role === 'admin' ? '/admin' : '/dashboard')
 }
+
+const goToRegister = () => router.push('/register')
 
 const handleForgotPassword = () => {
   forgotPasswordVisible.value = true
@@ -209,57 +303,87 @@ const handleForgotPassword = () => {
 
 const handleSendResetEmail = async () => {
   if (!forgotFormRef.value) return
-
   try {
     const valid = await forgotFormRef.value.validate()
     if (!valid) return
-
     forgotLoading.value = true
-    
-    // 模拟发送重置邮件
-    await new Promise(resolve => setTimeout(resolve, 2000))
-    
+    await new Promise((resolve) => setTimeout(resolve, 1200))
     ElMessage.success('重置密码邮件已发送，请查收邮箱')
     forgotPasswordVisible.value = false
     forgotFormRef.value.resetFields()
-  } catch (error) {
+  } catch {
     ElMessage.error('发送失败，请重试')
   } finally {
     forgotLoading.value = false
   }
 }
 
-const handleSocialLogin = (platform) => {
-  ElMessage.info(`${platform === 'wechat' ? '微信' : 'QQ'}登录功能开发中...`)
+const handleSocialLogin = async (platform) => {
+  try {
+    socialLoading.value = platform
+    const codeKey = `social_mock_code_${platform}`
+    let mockAuthCode = localStorage.getItem(codeKey)
+    if (!mockAuthCode) {
+      mockAuthCode = `${platform}_${Math.random().toString(36).slice(2, 12)}`
+      localStorage.setItem(codeKey, mockAuthCode)
+    }
+
+    const data = await socialLoginInit({
+      provider: platform,
+      auth_code: mockAuthCode,
+    })
+
+    if (data.need_profile_completion) {
+      socialTicket.value = data.social_ticket || ''
+      pendingProvider.value = data.social_provider || platform
+      socialProfileForm.username = data.suggested_username || ''
+      socialProfileForm.email = ''
+      socialProfileForm.password = ''
+      socialProfileForm.confirmPassword = ''
+      socialProfileVisible.value = true
+      return
+    }
+
+    persistLogin(data, data.username)
+    ElMessage.success(`${platform === 'wechat' ? '微信' : '支付宝'}登录成功`)
+  } catch (error) {
+    ElMessage.error(extractError(error, '第三方登录失败，请重试'))
+  } finally {
+    socialLoading.value = ''
+  }
+}
+
+const handleSocialComplete = async () => {
+  if (!socialFormRef.value) return
+  const valid = await socialFormRef.value.validate().catch(() => false)
+  if (!valid) return
+  try {
+    socialCompleteLoading.value = true
+    const payload = await socialCompleteProfile({
+      social_ticket: socialTicket.value,
+      username: socialProfileForm.username,
+      email: socialProfileForm.email,
+      password: socialProfileForm.password,
+    })
+    socialProfileVisible.value = false
+    persistLogin(payload, socialProfileForm.username)
+    ElMessage.success('资料完善成功，已为您登录')
+  } catch (error) {
+    ElMessage.error(extractError(error, '资料提交失败，请重试'))
+  } finally {
+    socialCompleteLoading.value = false
+  }
 }
 
 const handleLogin = async () => {
   if (!loginFormRef.value) return
-
   try {
     const valid = await loginFormRef.value.validate()
     if (!valid) return
-
     loading.value = true
-
     const payload = await loginUser(loginForm)
-    const role = payload.role || 'user'
-    localStorage.setItem('userRole', role)
-
-    if (role === 'admin') {
-      localStorage.setItem('adminToken', payload.access_token)
-      localStorage.setItem('adminUsername', payload.username || loginForm.username)
-      localStorage.removeItem('token')
-      localStorage.removeItem('username')
-    } else {
-      localStorage.setItem('token', payload.access_token)
-      localStorage.setItem('username', payload.username || loginForm.username)
-      localStorage.removeItem('adminToken')
-      localStorage.removeItem('adminUsername')
-    }
-
+    persistLogin(payload, loginForm.username)
     ElMessage.success('登录成功')
-    router.push(role === 'admin' ? '/admin' : '/dashboard')
   } catch (error) {
     ElMessage.error(extractError(error, '登录失败，请重试'))
   } finally {
@@ -268,7 +392,6 @@ const handleLogin = async () => {
 }
 
 onMounted(() => {
-  // 添加页面加载动画
   setTimeout(() => {
     document.querySelector('.login-box')?.classList.add('show')
   }, 100)
@@ -282,125 +405,19 @@ onMounted(() => {
   align-items: center;
   min-height: 100vh;
   padding: 20px;
-  position: relative;
-  overflow: hidden;
   background: linear-gradient(135deg, #eef7ff 0%, #dceeff 100%);
-}
-
-/* 背景装饰 */
-.bg-decoration {
-  position: absolute;
-  top: 0;
-  left: 0;
-  width: 100%;
-  height: 100%;
-  pointer-events: none;
-  z-index: 1;
-}
-
-.bg-circle {
-  position: absolute;
-  border-radius: 50%;
-  background: rgba(255, 255, 255, 0.1);
-  backdrop-filter: blur(10px);
-  animation: float 6s ease-in-out infinite;
-}
-
-.circle-1 {
-  width: 200px;
-  height: 200px;
-  top: 10%;
-  left: 10%;
-  animation-delay: 0s;
-}
-
-.circle-2 {
-  width: 150px;
-  height: 150px;
-  top: 70%;
-  right: 10%;
-  animation-delay: 2s;
-}
-
-.circle-3 {
-  width: 100px;
-  height: 100px;
-  bottom: 20%;
-  left: 20%;
-  animation-delay: 4s;
-}
-
-/* 粒子效果 */
-.bg-particles {
-  position: absolute;
-  top: 0;
-  left: 0;
-  width: 100%;
-  height: 100%;
-}
-
-.particle {
-  position: absolute;
-  width: 4px;
-  height: 4px;
-  background: rgba(255, 255, 255, 0.3);
-  border-radius: 50%;
-  animation: particle-float 10s linear infinite;
-}
-
-.particle:nth-child(odd) {
-  animation-delay: var(--delay);
-  left: 10%;
-  top: 90%;
-}
-
-.particle:nth-child(even) {
-  animation-delay: var(--delay);
-  right: 10%;
-  top: 10%;
-}
-
-@keyframes particle-float {
-  0% {
-    transform: translateY(0) translateX(0);
-    opacity: 0;
-  }
-  10% {
-    opacity: 1;
-  }
-  90% {
-    opacity: 1;
-  }
-  100% {
-    transform: translateY(-100vh) translateX(50px);
-    opacity: 0;
-  }
-}
-
-@keyframes float {
-  0%, 100% {
-    transform: translateY(0px) rotate(0deg);
-  }
-  50% {
-    transform: translateY(-20px) rotate(180deg);
-  }
 }
 
 .login-box {
   background: rgba(255, 255, 255, 0.95);
-  backdrop-filter: blur(20px);
   border-radius: 24px;
-  padding: 60px 50px;
-  box-shadow: 
-    0 20px 40px rgba(0, 0, 0, 0.1),
-    0 0 0 1px rgba(255, 255, 255, 0.2);
+  padding: 56px 46px;
+  box-shadow: 0 20px 40px rgba(0, 0, 0, 0.1);
   width: 100%;
   max-width: 480px;
-  position: relative;
-  z-index: 10;
   opacity: 0;
   transform: translateY(30px);
-  transition: all 0.6s cubic-bezier(0.4, 0, 0.2, 1);
+  transition: all 0.5s ease;
 }
 
 .login-box.show {
@@ -410,330 +427,99 @@ onMounted(() => {
 
 .login-header {
   text-align: center;
-  margin-bottom: 40px;
-}
-
-.logo {
-  margin-bottom: 25px;
-}
-
-.logo-animation {
-  display: inline-block;
-  animation: heartbeat 2s ease-in-out infinite;
-}
-
-@keyframes heartbeat {
-  0%, 100% {
-    transform: scale(1);
-  }
-  50% {
-    transform: scale(1.1);
-  }
-}
-
-.login-header h2 {
-  color: #2c3e50;
-  font-size: 28px;
-  font-weight: 700;
-  margin-bottom: 12px;
-  background: linear-gradient(135deg, #667eea, #764ba2);
-  -webkit-background-clip: text;
-  -webkit-text-fill-color: transparent;
-  background-clip: text;
-}
-
-.login-header p {
-  color: #7f8c8d;
-  font-size: 16px;
-  font-weight: 400;
-}
-
-.quick-login-tip {
-  margin-bottom: 20px;
+  margin-bottom: 28px;
 }
 
 .login-form {
-  margin-top: 30px;
-  display: flex;
-  flex-direction: column;
-  align-items: center;
+  margin-top: 20px;
+}
+
+.login-form :deep(.el-form-item) {
+  margin-bottom: 18px;
+}
+
+.login-form :deep(.el-form-item__content) {
+  width: 100%;
 }
 
 .input-wrapper {
-  position: relative;
   width: 100%;
-  max-width: 360px;
-  margin: 0 auto;
 }
 
 .custom-input {
   width: 100%;
 }
 
+.custom-input :deep(.el-input__wrapper) {
+  min-height: 46px;
+  border-radius: 12px;
+  padding: 0 12px;
+  box-shadow: 0 0 0 1px #d9e6f5 inset;
+  transition: box-shadow 0.2s ease;
+}
+
+.custom-input :deep(.el-input__wrapper.is-focus) {
+  box-shadow: 0 0 0 1px #409eff inset;
+}
+
 .remember-forgot {
+  width: 100%;
   display: flex;
   justify-content: space-between;
   align-items: center;
-  width: 100%;
-  max-width: 360px;
-  margin: 20px 0;
-}
-
-.custom-checkbox {
-  color: #606266;
-}
-
-.forgot-link {
-  font-weight: 500;
-  transition: all 0.3s ease;
-}
-
-.forgot-link:hover {
-  color: #409EFF;
-  transform: translateX(2px);
+  min-height: 22px;
 }
 
 .login-button {
   width: 100%;
-  max-width: 360px;
-  height: 54px;
-  font-size: 16px;
-  font-weight: 600;
+  height: 52px;
   border-radius: 12px;
-  background: linear-gradient(135deg, #409EFF, #36A3F5);
-  border: none;
-  transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
-  position: relative;
-  overflow: hidden;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-}
-
-.login-button::before {
-  content: '';
-  position: absolute;
-  top: 0;
-  left: -100%;
-  width: 100%;
-  height: 100%;
-  background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.2), transparent);
-  transition: left 0.5s;
-}
-
-.login-button:hover::before {
-  left: 100%;
-}
-
-.login-button:hover {
-  background: linear-gradient(135deg, #36A3F5, #409EFF);
-  transform: translateY(-2px);
-  box-shadow: 0 8px 25px rgba(64, 158, 255, 0.3);
-}
-
-.login-button:active {
-  transform: translateY(0);
-}
-
-.divider {
-  margin: 25px 0;
-}
-
-:deep(.divider .el-divider__text) {
-  background: transparent;
-  padding: 0 15px;
-}
-
-.divider-text {
-  color: #909399;
-  font-size: 14px;
+  font-weight: 600;
 }
 
 .social-login {
-  display: flex;
+  display: grid;
+  grid-template-columns: 1fr 1fr;
   gap: 12px;
   width: 100%;
-  max-width: 360px;
-  margin: 0 auto;
 }
 
 .social-btn {
-  flex: 1;
-  height: 50px;
-  border-radius: 10px;
-  border: 1px solid #dcdfe6;
-  background: white;
-  color: #606266;
-  font-size: 14px;
-  transition: all 0.3s ease;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  gap: 6px;
-}
-
-.social-btn:hover {
-  transform: translateY(-2px);
-  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
+  height: 46px;
+  border-radius: 12px;
 }
 
 .wechat-btn:hover {
-  border-color: #67c23a;
   color: #67c23a;
+  border-color: #67c23a;
 }
 
-.qq-btn:hover {
-  border-color: #409eff;
+.alipay-btn:hover {
   color: #409eff;
+  border-color: #409eff;
 }
 
 .register-link {
   text-align: center;
-  color: #7f8c8d;
-  font-size: 14px;
-  margin-top: 20px;
   width: 100%;
-  max-width: 360px;
+  color: #5d6b82;
 }
 
 .register-btn {
   margin-left: 5px;
-  font-weight: 600;
-  transition: all 0.3s ease;
 }
 
-.register-btn:hover {
-  color: #409EFF;
-  transform: translateX(3px);
+.social-alert {
+  margin-bottom: 16px;
 }
 
-/* Element Plus 样式覆盖 */
-:deep(.el-input__wrapper) {
-  border-radius: 12px;
-  padding: 18px 24px;
-  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.05);
-  transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
-  border: 2px solid transparent;
-  background: rgba(255, 255, 255, 0.9);
-  height: 54px;
-  display: flex;
-  align-items: center;
-  width: 100%;
-}
-
-:deep(.el-input__wrapper:hover) {
-  box-shadow: 0 6px 16px rgba(0, 0, 0, 0.1);
-  border-color: rgba(64, 158, 255, 0.2);
-  transform: translateY(-1px);
-}
-
-:deep(.el-input__wrapper.is-focus) {
-  box-shadow: 0 6px 20px rgba(64, 158, 255, 0.25);
-  border-color: #409EFF;
-  transform: translateY(-1px);
-}
-
-:deep(.el-input__inner) {
-  font-size: 16px;
-  color: #303133;
-  font-weight: 500;
-  line-height: 1.2;
-}
-
-:deep(.el-input__inner::placeholder) {
-  color: #a8abb2;
-  font-size: 16px;
-}
-
-:deep(.el-input__prefix) {
-  color: #909399;
-  font-size: 20px;
-  margin-right: 8px;
-}
-
-:deep(.el-input__suffix) {
-  color: #909399;
-  margin-left: 8px;
-}
-
-:deep(.el-form-item) {
-  width: 100%;
-  margin-bottom: 30px;
-}
-
-:deep(.el-form-item__content) {
-  line-height: normal;
-  width: 100%;
-}
-
-:deep(.el-checkbox__label) {
-  font-size: 14px;
-  line-height: 1.5;
-}
-
-:deep(.el-loading-mask) {
-  border-radius: 12px;
-}
-
-:deep(.el-alert) {
-  border-radius: 8px;
-}
-
-:deep(.el-divider) {
-  margin: 30px 0;
-}
-
-:deep(.el-divider__text) {
-  background: transparent;
-  padding: 0 20px;
-  font-size: 14px;
-}
-
-/* 响应式设计 */
 @media (max-width: 480px) {
   .login-box {
-    padding: 40px 30px;
-    margin: 10px;
-    border-radius: 20px;
+    padding: 34px 22px;
   }
-  
-  .login-header h2 {
-    font-size: 24px;
-  }
-  
-  .login-header p {
-    font-size: 14px;
-  }
-  
-  .social-login {
-    flex-direction: column;
-  }
-  
-  .bg-circle {
-    display: none;
-  }
-}
 
-/* 暗色模式适配 */
-@media (prefers-color-scheme: dark) {
-  .login-box {
-    background: rgba(30, 30, 30, 0.95);
-    border: 1px solid rgba(255, 255, 255, 0.1);
-  }
-  
-  .login-header h2 {
-    background: linear-gradient(135deg, #409EFF, #36A3F5);
-    -webkit-background-clip: text;
-    -webkit-text-fill-color: transparent;
-    background-clip: text;
-  }
-  
-  .login-header p {
-    color: #a8abb2;
-  }
-  
-  .register-link {
-    color: #a8abb2;
+  .social-login {
+    grid-template-columns: 1fr;
   }
 }
 </style>

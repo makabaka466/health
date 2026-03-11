@@ -20,6 +20,11 @@ Base = declarative_base()
 def _ensure_schema_updates() -> None:
     inspector = inspect(engine)
 
+    if "rag_knowledge_documents" not in inspector.get_table_names():
+        from app import models  # noqa: F401
+
+        models.RagKnowledgeDocument.__table__.create(bind=engine, checkfirst=True)
+
     if "users" in inspector.get_table_names():
         user_columns = {col["name"] for col in inspector.get_columns("users")}
         user_alter_sql = {
@@ -29,6 +34,9 @@ def _ensure_schema_updates() -> None:
             "encrypted_profile_data": "ALTER TABLE users ADD COLUMN encrypted_profile_data TEXT NULL",
             "public_profile_data": "ALTER TABLE users ADD COLUMN public_profile_data TEXT NULL",
             "profile_is_public": "ALTER TABLE users ADD COLUMN profile_is_public BOOLEAN NOT NULL DEFAULT 0",
+            "social_provider": "ALTER TABLE users ADD COLUMN social_provider VARCHAR(20) NULL",
+            "social_open_id": "ALTER TABLE users ADD COLUMN social_open_id VARCHAR(128) NULL",
+            "social_nickname": "ALTER TABLE users ADD COLUMN social_nickname VARCHAR(100) NULL",
         }
 
         with engine.begin() as conn:

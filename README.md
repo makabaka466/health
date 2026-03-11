@@ -7,6 +7,7 @@
 ## 核心能力
 
 - 🔐 用户注册时自动生成钱包地址与一次性私钥（仅返回一次）
+- 🔑 支持微信/支付宝第三方登录（首次登录补全资料，后续可一键登录）
 - 🧾 个人资料支持公开/私密模式
 - 📊 健康数据支持文本/PDF，支持公开/私密存储
 - � AI 助手支持对话与健康建议
@@ -146,6 +147,20 @@ npm run dev
 
 - Swagger: `http://localhost:8000/docs`
 - ReDoc: `http://localhost:8000/redoc`
+
+### 第三方登录相关接口
+
+- `POST /api/auth/social/login-init`
+  - 入参：`provider`（wechat/alipay）、`auth_code`（第三方授权码，当前项目可使用模拟码）
+  - 出参：
+    - 已绑定账号：直接返回登录 token
+    - 未绑定账号：返回 `social_ticket`，用于下一步补全资料
+
+- `POST /api/auth/social/complete`
+  - 入参：`social_ticket` + `username` + `email` + `password`
+  - 出参：登录 token
+
+> 说明：当前仓库默认接入为“可跑通的模拟授权码模式”，便于本地联调；生产环境请替换为微信/支付宝官方 OAuth 授权码。
 
 ---
 

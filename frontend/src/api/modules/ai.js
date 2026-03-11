@@ -1,6 +1,6 @@
 import { createHttpClient } from '../core/http'
 
-const api = createHttpClient({ timeout: 30000, tokenMode: 'user' })
+const api = createHttpClient({ timeout: 30000, tokenMode: 'both' })
 
 export const aiApi = {
   async sendMessage(messageData) {
@@ -25,5 +25,9 @@ export const aiApi = {
 
   async analyzeHealthData(payload) {
     return api.post('/ai/analyze', payload)
+  },
+
+  async getHomeAdvice() {
+    return api.get('/ai/home-advice')
   }
 }

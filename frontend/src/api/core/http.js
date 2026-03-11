@@ -19,7 +19,7 @@ function handleUnauthorized(tokenMode) {
   localStorage.removeItem('adminUsername')
   localStorage.removeItem('userRole')
 
-  if (tokenMode === 'admin') {
+  if (tokenMode === 'admin' || (tokenMode === 'both' && window.location.pathname.startsWith('/admin'))) {
     window.location.href = '/admin/login'
     return
   }

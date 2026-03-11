@@ -44,7 +44,7 @@ const routes = [
       {
         path: 'ai-chat',
         name: 'AIChat',
-        component: () => import('../views/AIChat.vue')
+        component: () => import('../views/AiAssistant.vue')
       },
       {
         path: 'ai-assistant',
@@ -92,7 +92,12 @@ const routes = [
       {
         path: 'ai-chat',
         name: 'AdminAIChat',
-        component: () => import('../views/AIChat.vue')
+        component: () => import('../views/AiAssistant.vue')
+      },
+      {
+        path: 'knowledge-base',
+        name: 'AdminKnowledgeBase',
+        component: () => import('../views/AdminKnowledgeBase.vue')
       },
       {
         path: 'articles',

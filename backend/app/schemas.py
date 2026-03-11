@@ -23,6 +23,44 @@ class UserResponse(UserBase):
         from_attributes = True
 
 
+class RagKnowledgeDocBase(BaseModel):
+    title: str
+    category: str
+    content: str
+    source: Optional[str] = None
+    tags: List[str] = Field(default_factory=list)
+    is_active: bool = True
+
+
+class RagKnowledgeDocCreate(RagKnowledgeDocBase):
+    pass
+
+
+class RagKnowledgeDocUpdate(BaseModel):
+    title: Optional[str] = None
+    category: Optional[str] = None
+    content: Optional[str] = None
+    source: Optional[str] = None
+    tags: Optional[List[str]] = None
+    is_active: Optional[bool] = None
+
+
+class RagKnowledgeDocResponse(RagKnowledgeDocBase):
+    id: int
+    created_at: datetime
+    updated_at: datetime
+
+    class Config:
+        from_attributes = True
+
+
+class RagKnowledgeDocListResponse(BaseModel):
+    items: List[RagKnowledgeDocResponse]
+    total: int
+    page: int
+    page_size: int
+
+
 class AdminUserResponse(BaseModel):
     username: str
     email: str
@@ -117,6 +155,31 @@ class Token(BaseModel):
     role: Optional[str] = None
 
 
+class SocialLoginInitRequest(BaseModel):
+    provider: str
+    auth_code: Optional[str] = None
+    nickname: Optional[str] = None
+
+
+class SocialLoginInitResponse(BaseModel):
+    need_profile_completion: bool
+    social_ticket: Optional[str] = None
+    social_provider: Optional[str] = None
+    social_nickname: Optional[str] = None
+    suggested_username: Optional[str] = None
+    access_token: Optional[str] = None
+    token_type: Optional[str] = None
+    username: Optional[str] = None
+    role: Optional[str] = None
+
+
+class SocialProfileCompleteRequest(BaseModel):
+    social_ticket: str
+    username: str
+    email: EmailStr
+    password: str
+
+
 class UserRegisterResponse(UserResponse):
     generated_private_key: Optional[str] = None
 
@@ -179,6 +242,16 @@ class ChatMessage(BaseModel):
 class ChatResponse(BaseModel):
     reply: str
     timestamp: datetime
+    chat_id: Optional[int] = None
+    references: List[str] = Field(default_factory=list)
+    personalization_used: bool = False
+
+
+class AiHomeAdviceResponse(BaseModel):
+    summary: str
+    recommendations: List[str] = Field(default_factory=list)
+    insights: List[str] = Field(default_factory=list)
+    based_on_public_records: int = 0
 
 # 知识库Schema
 class KnowledgeBase(BaseModel):

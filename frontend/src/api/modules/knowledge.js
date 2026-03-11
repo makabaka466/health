@@ -41,5 +41,21 @@ export const knowledgeApi = {
 
   async deleteArticle(articleId) {
     return api.delete(`/knowledge/admin/articles/${articleId}`)
+  },
+
+  async getRagDocs(params = {}) {
+    return api.get('/knowledge/admin/rag-docs', { params })
+  },
+
+  async createRagDoc(payload) {
+    return api.post('/knowledge/admin/rag-docs', payload)
+  },
+
+  async updateRagDoc(docId, payload) {
+    return api.put(`/knowledge/admin/rag-docs/${docId}`, payload)
+  },
+
+  async deleteRagDoc(docId) {
+    return api.delete(`/knowledge/admin/rag-docs/${docId}`)
   }
 }

@@ -32,6 +32,20 @@ def _join_tags(tags: Optional[List[str]]) -> str:
     return json.dumps(tags or [], ensure_ascii=False)
 
 
+def _to_rag_doc_response(doc: models.RagKnowledgeDocument) -> schemas.RagKnowledgeDocResponse:
+    return schemas.RagKnowledgeDocResponse(
+        id=doc.id,
+        title=doc.title,
+        category=doc.category,
+        content=doc.content,
+        source=doc.source,
+        tags=_parse_tags(doc.tags),
+        is_active=doc.is_active,
+        created_at=doc.created_at,
+        updated_at=doc.updated_at,
+    )
+
+
 def _favorite_count_map(db: Session, article_ids: List[int]) -> dict[int, int]:
     if not article_ids:
         return {}
@@ -352,3 +366,107 @@ async def delete_article(
     db.delete(article)
     db.commit()
     return {"message": "文章已删除"}
+
+
+@router.get("/admin/rag-docs", response_model=schemas.RagKnowledgeDocListResponse)
+async def list_rag_docs(
+    page: int = Query(1, ge=1),
+    page_size: int = Query(10, ge=1, le=100),
+    keyword: Optional[str] = None,
+    category: Optional[str] = None,
+    active_only: bool = Query(False),
+    db: Session = Depends(get_db),
+    current_user: models.User = Depends(get_current_user),
+):
+    _assert_admin(current_user)
+    query = db.query(models.RagKnowledgeDocument)
+
+    if keyword:
+        like = f"%{keyword}%"
+        query = query.filter(
+            or_(
+                models.RagKnowledgeDocument.title.ilike(like),
+                models.RagKnowledgeDocument.content.ilike(like),
+                models.RagKnowledgeDocument.source.ilike(like),
+            )
+        )
+    if category:
+        query = query.filter(models.RagKnowledgeDocument.category == category)
+    if active_only:
+        query = query.filter(models.RagKnowledgeDocument.is_active.is_(True))
+
+    total = query.count()
+    items = (
+        query.order_by(desc(models.RagKnowledgeDocument.updated_at))
+        .offset((page - 1) * page_size)
+        .limit(page_size)
+        .all()
+    )
+
+    return schemas.RagKnowledgeDocListResponse(
+        items=[_to_rag_doc_response(item) for item in items],
+        total=total,
+        page=page,
+        page_size=page_size,
+    )
+
+
+@router.post("/admin/rag-docs", response_model=schemas.RagKnowledgeDocResponse)
+async def create_rag_doc(
+    payload: schemas.RagKnowledgeDocCreate,
+    db: Session = Depends(get_db),
+    current_user: models.User = Depends(get_current_user),
+):
+    _assert_admin(current_user)
+    doc = models.RagKnowledgeDocument(
+        title=payload.title,
+        category=payload.category,
+        content=payload.content,
+        source=payload.source,
+        tags=_join_tags(payload.tags),
+        is_active=payload.is_active,
+    )
+    db.add(doc)
+    db.commit()
+    db.refresh(doc)
+    return _to_rag_doc_response(doc)
+
+
+@router.put("/admin/rag-docs/{doc_id}", response_model=schemas.RagKnowledgeDocResponse)
+async def update_rag_doc(
+    doc_id: int,
+    payload: schemas.RagKnowledgeDocUpdate,
+    db: Session = Depends(get_db),
+    current_user: models.User = Depends(get_current_user),
+):
+    _assert_admin(current_user)
+    doc = db.query(models.RagKnowledgeDocument).filter(models.RagKnowledgeDocument.id == doc_id).first()
+    if not doc:
+        raise HTTPException(status_code=404, detail="知识库文档不存在")
+
+    update_data = payload.model_dump(exclude_unset=True)
+    if "tags" in update_data:
+        update_data["tags"] = _join_tags(update_data["tags"] or [])
+
+    for key, value in update_data.items():
+        setattr(doc, key, value)
+
+    db.commit()
+    db.refresh(doc)
+    return _to_rag_doc_response(doc)
+
+
+@router.delete("/admin/rag-docs/{doc_id}")
+async def delete_rag_doc(
+    doc_id: int,
+    db: Session = Depends(get_db),
+    current_user: models.User = Depends(get_current_user),
+):
+    _assert_admin(current_user)
+    doc = db.query(models.RagKnowledgeDocument).filter(models.RagKnowledgeDocument.id == doc_id).first()
+    if not doc:
+        raise HTTPException(status_code=404, detail="知识库文档不存在")
+
+    db.delete(doc)
+    db.commit()
+    return {"message": "知识库文档已删除"}
