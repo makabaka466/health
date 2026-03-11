@@ -51,6 +51,18 @@ export const knowledgeApi = {
     return api.post('/knowledge/admin/rag-docs', payload)
   },
 
+  async importRagDocs(formData) {
+    return api.post('/knowledge/admin/rag-docs/import', formData, {
+      headers: {
+        'Content-Type': 'multipart/form-data'
+      }
+    })
+  },
+
+  async seedRagDocs() {
+    return api.post('/knowledge/admin/rag-docs/seed-defaults')
+  },
+
   async updateRagDoc(docId, payload) {
     return api.put(`/knowledge/admin/rag-docs/${docId}`, payload)
   },

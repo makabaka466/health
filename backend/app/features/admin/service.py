@@ -56,6 +56,9 @@ class AdminSystemService:
         return query.order_by(models.SystemLog.created_at.desc()).limit(limit).all()
 
     def log(self, *, level: str, module: str, action: str, message: str, operator_id: int | None = None) -> None:
+        if not self._is_operation_log_enabled() and module != "system_settings":
+            return
+
         self.db.add(
             models.SystemLog(
                 level=level,
@@ -65,6 +68,16 @@ class AdminSystemService:
                 operator_id=operator_id,
             )
         )
+
+    def _is_operation_log_enabled(self) -> bool:
+        row = (
+            self.db.query(models.SystemSetting)
+            .filter(models.SystemSetting.setting_key == "enable_operation_log")
+            .first()
+        )
+        if not row:
+            return True
+        return bool(self._parse_value(row.setting_value))
 
     @staticmethod
     def _parse_value(raw: str):

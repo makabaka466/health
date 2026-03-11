@@ -1,4 +1,4 @@
-<template>
+﻿<template>
   <div class="knowledge-detail-page">
     <div class="detail-header-card">
       <el-button class="back-btn" text @click="goBack">
@@ -21,9 +21,14 @@
       <template v-if="article">
         <div class="article-content" v-html="article.content"></div>
         <div class="actions-row">
-          <el-button type="primary" @click="favoriteArticle">
+          <el-button
+            :type="article.is_favorited ? 'warning' : 'primary'"
+            plain
+            :loading="favoriteLoading"
+            @click="favoriteArticle"
+          >
             <el-icon><Star /></el-icon>
-            收藏文章
+            {{ article.is_favorited ? '已收藏，点击取消' : '收藏文章' }}
           </el-button>
           <el-button @click="goBack">返回列表</el-button>
         </div>
@@ -42,6 +47,7 @@ import { knowledgeApi } from '../api/knowledge'
 const route = useRoute()
 const router = useRouter()
 const loading = ref(false)
+const favoriteLoading = ref(false)
 const article = ref(null)
 
 const loadDetail = async () => {
@@ -63,13 +69,21 @@ const loadDetail = async () => {
 }
 
 const favoriteArticle = async () => {
-  if (!article.value) return
+  if (!article.value || favoriteLoading.value) return
+
+  favoriteLoading.value = true
   try {
-    await knowledgeApi.favoriteArticle(article.value.id)
-    article.value.favorite_count += 1
-    ElMessage.success('收藏成功')
+    const result = article.value.is_favorited
+      ? await knowledgeApi.unfavoriteArticle(article.value.id)
+      : await knowledgeApi.favoriteArticle(article.value.id)
+
+    article.value.is_favorited = result.is_favorited
+    article.value.favorite_count = result.favorite_count ?? article.value.favorite_count
+    ElMessage.success(result.is_favorited ? '收藏成功' : '已取消收藏')
   } catch (error) {
-    ElMessage.error(error?.response?.data?.detail || '收藏失败')
+    ElMessage.error(error?.response?.data?.detail || '收藏操作失败')
+  } finally {
+    favoriteLoading.value = false
   }
 }
 

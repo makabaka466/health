@@ -1,19 +1,21 @@
 <template>
   <div class="admin-dashboard-container">
     <el-container>
-      <!-- 侧边栏 -->
-      <el-aside :width="sidebarCollapsed ? '64px' : '260px'" class="sidebar">
+      <el-aside
+        :width="sidebarCollapsed ? '64px' : '260px'"
+        :class="['sidebar', { collapsed: sidebarCollapsed }]"
+      >
         <div class="logo-container">
           <div class="logo-wrapper">
             <el-icon size="32" color="#F56C6C" class="logo-icon">
               <Setting />
             </el-icon>
             <transition name="fade">
-              <span v-show="!sidebarCollapsed" class="logo-text">管理后台</span>
+              <span v-show="!sidebarCollapsed" class="logo-text">{{ labels.logoTitle }}</span>
             </transition>
           </div>
         </div>
-        
+
         <el-menu
           :default-active="activeMenu"
           class="sidebar-menu"
@@ -25,86 +27,53 @@
         >
           <el-menu-item index="/admin">
             <el-icon><Monitor /></el-icon>
-            <template #title>
-              <span class="menu-title">控制台</span>
-            </template>
+            <template #title><span class="menu-title">{{ labels.console }}</span></template>
           </el-menu-item>
-          
           <el-menu-item index="/admin/users">
             <el-icon><User /></el-icon>
-            <template #title>
-              <span class="menu-title">用户管理</span>
-            </template>
+            <template #title><span class="menu-title">{{ labels.users }}</span></template>
           </el-menu-item>
-          
-          <el-menu-item index="/admin/health-data">
-            <el-icon><DataAnalysis /></el-icon>
-            <template #title>
-              <span class="menu-title">健康数据</span>
-            </template>
-          </el-menu-item>
-          
           <el-menu-item index="/admin/ai-chat">
             <el-icon><ChatDotRound /></el-icon>
-            <template #title>
-              <span class="menu-title">AI管理</span>
-            </template>
+            <template #title><span class="menu-title">{{ labels.ai }}</span></template>
           </el-menu-item>
-
           <el-menu-item index="/admin/knowledge-base">
             <el-icon><Document /></el-icon>
-            <template #title>
-              <span class="menu-title">知识库管理</span>
-            </template>
+            <template #title><span class="menu-title">{{ labels.knowledgeBase }}</span></template>
           </el-menu-item>
-
           <el-menu-item index="/admin/articles">
             <el-icon><Reading /></el-icon>
-            <template #title>
-              <span class="menu-title">文章管理</span>
-            </template>
+            <template #title><span class="menu-title">{{ labels.articles }}</span></template>
           </el-menu-item>
-          
           <el-menu-item index="/admin/settings">
             <el-icon><Setting /></el-icon>
-            <template #title>
-              <span class="menu-title">系统设置</span>
-            </template>
+            <template #title><span class="menu-title">{{ labels.settings }}</span></template>
           </el-menu-item>
-          
           <el-menu-item index="/admin/logs">
             <el-icon><Document /></el-icon>
-            <template #title>
-              <span class="menu-title">系统日志</span>
-            </template>
+            <template #title><span class="menu-title">{{ labels.logs }}</span></template>
           </el-menu-item>
         </el-menu>
       </el-aside>
-      
-      <!-- 主内容区 -->
+
       <el-container>
-        <!-- 顶部导航栏 -->
         <el-header class="header">
           <div class="header-left">
-            <el-button
-              type="text"
-              @click="toggleSidebar"
-              class="sidebar-toggle"
-            >
+            <el-button type="text" @click="toggleSidebar" class="sidebar-toggle">
               <el-icon size="20" class="toggle-icon">
                 <Fold v-if="!sidebarCollapsed" />
                 <Expand v-else />
               </el-icon>
             </el-button>
-            
+
             <div class="breadcrumb">
               <el-breadcrumb separator="/">
-                <el-breadcrumb-item :to="{ path: '/admin' }">控制台</el-breadcrumb-item>
+                <el-breadcrumb-item :to="{ path: '/admin' }">{{ labels.console }}</el-breadcrumb-item>
                 <el-breadcrumb-item v-if="currentPageName">{{ currentPageName }}</el-breadcrumb-item>
               </el-breadcrumb>
             </div>
           </div>
-          
+
           <div class="header-right">
             <div class="header-actions">
               <el-button type="text" class="action-btn">
@@ -114,7 +83,7 @@
                 <el-icon size="18"><Setting /></el-icon>
               </el-button>
             </div>
-            
+
             <el-dropdown @command="handleCommand" class="user-dropdown">
               <div class="user-info">
                 <el-avatar :size="36" :src="userAvatar" class="user-avatar">
@@ -123,7 +92,7 @@
                 <transition name="fade">
                   <div v-show="!sidebarCollapsed" class="user-details">
                     <span class="username">{{ username }}</span>
-                    <span class="user-role">超级管理员</span>
+                    <span class="user-role">{{ labels.superAdmin }}</span>
                   </div>
                 </transition>
                 <el-icon class="dropdown-icon">
@@ -134,23 +103,22 @@
                 <el-dropdown-menu>
                   <el-dropdown-item command="profile">
                     <el-icon><User /></el-icon>
-                    个人中心
+                    {{ labels.profile }}
                   </el-dropdown-item>
                   <el-dropdown-item command="settings">
                     <el-icon><Setting /></el-icon>
-                    设置
+                    {{ labels.settingsShort }}
                   </el-dropdown-item>
                   <el-dropdown-item divided command="logout">
                     <el-icon><SwitchButton /></el-icon>
-                    退出登录
+                    {{ labels.logout }}
                   </el-dropdown-item>
                 </el-dropdown-menu>
               </template>
             </el-dropdown>
           </div>
         </el-header>
-        
-        <!-- 主要内容 -->
+
         <el-main class="main-content">
           <div class="content-wrapper">
             <router-view v-slot="{ Component }">
@@ -166,31 +134,55 @@
 </template>
 
 <script setup>
-import { ref, computed } from 'vue'
-import { useRouter, useRoute } from 'vue-router'
+import { computed, ref } from 'vue'
+import { useRoute, useRouter } from 'vue-router'
 import { ElMessage, ElMessageBox } from 'element-plus'
+import { clearAuthStorage, redirectToLogin } from '../utils/auth'
+
+const labels = {
+  logoTitle: '\u7ba1\u7406\u540e\u53f0',
+  console: '\u63a7\u5236\u53f0',
+  users: '\u7528\u6237\u7ba1\u7406',
+  ai: 'AI \u7ba1\u7406',
+  knowledgeBase: '\u77e5\u8bc6\u5e93\u7ba1\u7406',
+  articles: '\u6587\u7ae0\u7ba1\u7406',
+  settings: '\u7cfb\u7edf\u8bbe\u7f6e',
+  settingsShort: '\u8bbe\u7f6e',
+  logs: '\u7cfb\u7edf\u65e5\u5fd7',
+  superAdmin: '\u8d85\u7ea7\u7ba1\u7406\u5458',
+  profile: '\u4e2a\u4eba\u4e2d\u5fc3',
+  logout: '\u9000\u51fa\u767b\u5f55',
+  admin: '\u7ba1\u7406\u5458',
+  profileTip: '\u4e2a\u4eba\u4e2d\u5fc3\u529f\u80fd\u5f00\u53d1\u4e2d...',
+  logoutConfirm: '\u786e\u5b9a\u8981\u9000\u51fa\u767b\u5f55\u5417\uff1f',
+  notice: '\u63d0\u793a',
+  confirm: '\u786e\u5b9a',
+  cancel: '\u53d6\u6d88',
+  logoutSuccess: '\u5df2\u9000\u51fa\u767b\u5f55'
+}
 
 const router = useRouter()
 const route = useRoute()
 const sidebarCollapsed = ref(false)
-
-const username = computed(() => localStorage.getItem('adminUsername') || '管理员')
 const userAvatar = ref('')
+
+const username = computed(
+  () => localStorage.getItem('adminUsername') || localStorage.getItem('username') || labels.admin
+)
+
 const activeMenu = computed(() => route.path)
 
-const currentPageName = computed(() => {
-  const routeMap = {
-    '/admin': '控制台',
-    '/admin/users': '用户管理',
-    '/admin/health-data': '健康数据',
-    '/admin/ai-chat': 'AI管理',
-    '/admin/knowledge-base': '知识库管理',
-    '/admin/articles': '文章管理',
-    '/admin/settings': '系统设置',
-    '/admin/logs': '系统日志'
-  }
-  return routeMap[route.path] || ''
-})
+const routeMap = {
+  '/admin': labels.console,
+  '/admin/users': labels.users,
+  '/admin/ai-chat': labels.ai,
+  '/admin/knowledge-base': labels.knowledgeBase,
+  '/admin/articles': labels.articles,
+  '/admin/settings': labels.settings,
+  '/admin/logs': labels.logs
+}
+
+const currentPageName = computed(() => routeMap[route.path] || '')
 
 const toggleSidebar = () => {
   sidebarCollapsed.value = !sidebarCollapsed.value
@@ -199,33 +191,28 @@ const toggleSidebar = () => {
 const handleCommand = async (command) => {
   switch (command) {
     case 'profile':
-      ElMessage.info('个人中心功能开发中...')
+      ElMessage.info(labels.profileTip)
       break
     case 'settings':
       router.push('/admin/settings')
       break
     case 'logout':
       try {
-        await ElMessageBox.confirm('确定要退出登录吗？', '提示', {
-          confirmButtonText: '确定',
-          cancelButtonText: '取消',
+        await ElMessageBox.confirm(labels.logoutConfirm, labels.notice, {
+          confirmButtonText: labels.confirm,
+          cancelButtonText: labels.cancel,
           type: 'warning'
         })
 
-        localStorage.removeItem('adminToken')
-        localStorage.removeItem('adminUsername')
-        localStorage.removeItem('token')
-        localStorage.removeItem('username')
-        localStorage.removeItem('userRole')
-
-        ElMessage.success('已退出登录')
-
-        if (route.path !== '/admin/login') {
-          router.replace('/admin/login')
-        }
+        clearAuthStorage()
+        ElMessage.success(labels.logoutSuccess)
+        await router.replace('/login')
+        redirectToLogin()
       } catch {
-        // 用户取消
+        return
       }
+      break
+    default:
       break
   }
 }
@@ -312,7 +299,7 @@ const handleCommand = async (command) => {
   transform: translateY(-50%);
   width: 3px;
   height: 0;
-  background: #F56C6C;
+  background: #f56c6c;
   border-radius: 0 2px 2px 0;
   transition: height 0.3s ease;
 }
@@ -363,7 +350,7 @@ const handleCommand = async (command) => {
 
 .sidebar-toggle:hover {
   background: #f1f5f9;
-  color: #F56C6C;
+  color: #f56c6c;
 }
 
 .toggle-icon {
@@ -395,7 +382,7 @@ const handleCommand = async (command) => {
 
 .action-btn:hover {
   background: #f1f5f9;
-  color: #F56C6C;
+  color: #f56c6c;
 }
 
 .user-dropdown {
@@ -436,7 +423,7 @@ const handleCommand = async (command) => {
 
 .user-role {
   font-size: 12px;
-  color: #F56C6C;
+  color: #f56c6c;
   font-weight: 500;
 }
 
@@ -462,7 +449,6 @@ const handleCommand = async (command) => {
   border-radius: 18px;
 }
 
-/* 动画 */
 .fade-enter-active,
 .fade-leave-active {
   transition: opacity 0.3s ease;
@@ -491,7 +477,6 @@ const handleCommand = async (command) => {
   transform: translateX(-20px);
 }
 
-/* 滚动条样式 */
 .content-wrapper::-webkit-scrollbar {
   width: 6px;
 }
@@ -509,7 +494,6 @@ const handleCommand = async (command) => {
   background: #94a3b8;
 }
 
-/* 响应式设计 */
 @media (max-width: 768px) {
   .sidebar {
     position: fixed;
@@ -518,29 +502,28 @@ const handleCommand = async (command) => {
     bottom: 0;
     z-index: 1000;
   }
-  
+
   .sidebar.collapsed {
     transform: translateX(-100%);
   }
-  
+
   .header {
     padding: 0 16px;
   }
-  
+
   .breadcrumb {
     display: none;
   }
-  
+
   .user-details {
     display: none;
   }
-  
+
   .content-wrapper {
     padding: 16px;
   }
 }
 
-/* Element Plus 样式覆盖 */
 :deep(.el-menu--collapse) {
   width: 64px;
 }
@@ -562,7 +545,7 @@ const handleCommand = async (command) => {
 }
 
 :deep(.el-breadcrumb__inner.is-link) {
-  color: #F56C6C;
+  color: #f56c6c;
 }
 
 :deep(.el-breadcrumb__separator) {

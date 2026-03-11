@@ -1,224 +1,190 @@
-<template>
+﻿<template>
   <div class="home-container">
-    <!-- 欢迎区域 -->
-    <div class="welcome-section">
-      <div class="welcome-content">
-        <div class="welcome-text">
-          <h1 class="welcome-title">
-            <span class="title-gradient">健康管理系统</span>
-          </h1>
-          <p class="welcome-subtitle">您的智能健康管理助手</p>
-          <div class="welcome-stats">
-            <div class="stat-item">
-              <span class="stat-number">{{ todayDate }}</span>
-              <span class="stat-label">今日日期</span>
-            </div>
-            <div class="stat-item">
-              <span class="stat-number">{{ greeting }}</span>
-              <span class="stat-label">问候语</span>
-            </div>
-          </div>
+    <section class="hero-section">
+      <div class="hero-copy">
+        <span class="hero-kicker">SMART HEALTH</span>
+        <h1>欢迎回来，{{ greeting }}</h1>
+        <p>
+          今天是 {{ todayDate }}，这里为你聚合健康知识推荐、AI 个性化建议与快捷入口，
+          让日常健康管理更轻松、更直观。
+        </p>
+        <div class="hero-actions">
+          <el-button type="primary" size="large" round @click="router.push('/dashboard/health-data')">查看健康数据</el-button>
+          <el-button size="large" round @click="router.push('/dashboard/knowledge-center')">进入知识中心</el-button>
         </div>
-        <div class="welcome-visual">
-          <div class="floating-cards">
-            <div class="floating-card card-1">
-              <el-icon size="24" color="#409EFF"><Heart /></el-icon>
-            </div>
-            <div class="floating-card card-2">
-              <el-icon size="24" color="#67C23A"><TrendCharts /></el-icon>
-            </div>
-            <div class="floating-card card-3">
-              <el-icon size="24" color="#E6A23C"><Bell /></el-icon>
-            </div>
+        <div class="hero-metrics">
+          <div class="metric-card">
+            <strong>{{ todayDate }}</strong>
+            <span>今日日期</span>
+          </div>
+          <div class="metric-card">
+            <strong>{{ pushedArticles.length }}</strong>
+            <span>推荐文章</span>
+          </div>
+          <div class="metric-card">
+            <strong>{{ aiHomeAdvice.recommendations.length }}</strong>
+            <span>AI 建议</span>
           </div>
         </div>
       </div>
-    </div>
 
-    <div class="home-recommendations">
-      <h2 class="section-title">健康知识推送</h2>
-      <div v-if="pushedArticles.length" class="recommend-carousel-wrap">
-        <el-carousel :interval="5000" trigger="click" arrow="always" height="260px">
-          <el-carousel-item v-for="article in pushedArticles" :key="article.id">
-            <div class="recommend-slide" @click="goArticle(article.id)">
-              <div class="slide-overlay"></div>
-              <div class="slide-content">
-                <div class="recommend-header">
-                  <el-tag size="small" effect="dark">{{ article.category }}</el-tag>
-                  <span class="recommend-meta">{{ article.view_count }} 阅读</span>
-                </div>
-                <h3>{{ article.title }}</h3>
-                <p>{{ article.summary }}</p>
-              </div>
-            </div>
-          </el-carousel-item>
-        </el-carousel>
+      <div class="hero-visual">
+        <div class="visual-card primary">
+          <span>健康趋势</span>
+          <strong>稳定向好</strong>
+        </div>
+        <div class="visual-card secondary">
+          <span>知识阅读</span>
+          <strong>建议每天 10 分钟</strong>
+        </div>
+        <div class="floating-icon icon-heart"><el-icon><Heart /></el-icon></div>
+        <div class="floating-icon icon-trend"><el-icon><TrendCharts /></el-icon></div>
+        <div class="floating-icon icon-bell"><el-icon><Bell /></el-icon></div>
       </div>
+    </section>
+
+    <section class="panel-section">
+      <div class="section-head">
+        <div>
+          <h2 class="section-title">健康知识推荐</h2>
+          <p class="section-subtitle">大图轮播结合热门榜单，帮你更快找到值得阅读的内容。</p>
+        </div>
+        <el-button type="primary" plain @click="router.push('/dashboard/knowledge-center')">查看更多</el-button>
+      </div>
+
+      <div v-if="pushedArticles.length" class="recommend-showcase">
+        <div class="recommend-carousel-wrap">
+          <el-carousel :interval="5000" trigger="click" arrow="always" height="320px">
+            <el-carousel-item v-for="article in pushedArticles" :key="article.id">
+              <div class="recommend-slide" :style="getArticleBannerStyle(article)" @click="goArticle(article.id)">
+                <div class="slide-overlay"></div>
+                <div class="slide-content">
+                  <div class="recommend-header">
+                    <el-tag size="small" effect="dark">{{ article.category }}</el-tag>
+                    <span class="recommend-meta">{{ article.view_count }} 阅读 · {{ article.favorite_count }} 收藏</span>
+                  </div>
+                  <h3>{{ article.title }}</h3>
+                  <p>{{ article.summary || '点击查看完整文章，获取更系统的健康建议。' }}</p>
+                  <div class="slide-actions">
+                    <el-button type="primary" size="large" round @click.stop="goArticle(article.id)">立即阅读</el-button>
+                    <span class="slide-tip">持续更新的健康精选内容</span>
+                  </div>
+                </div>
+              </div>
+            </el-carousel-item>
+          </el-carousel>
+        </div>
+
+        <div class="recommend-side">
+          <div class="side-panel-title">本周热门</div>
+          <button
+            v-for="(article, index) in pushedArticles.slice(0, 3)"
+            :key="`side-${article.id}`"
+            type="button"
+            class="side-article"
+            @click="goArticle(article.id)"
+          >
+            <span class="side-rank">{{ String(index + 1).padStart(2, '0') }}</span>
+            <span class="side-info">
+              <strong>{{ article.title }}</strong>
+              <small>{{ article.category }} · {{ article.view_count }} 阅读</small>
+            </span>
+          </button>
+        </div>
+      </div>
+
       <el-card v-else class="recommend-empty" shadow="never">
-        <p>暂无推送文章，去知识中心看看最新内容</p>
+        <p>暂无推荐文章，去知识中心看看最新内容吧。</p>
         <el-button type="primary" plain @click="router.push('/dashboard/knowledge-center')">前往知识中心</el-button>
       </el-card>
-    </div>
+    </section>
 
-    <div class="home-recommendations">
-      <h2 class="section-title">AI 个性化健康建议</h2>
-      <el-card class="recommend-empty" shadow="never">
-        <div class="ai-advice-head">
-          <p>{{ aiHomeAdvice.summary }}</p>
-          <el-tag type="success" effect="plain">基于公开记录 {{ aiHomeAdvice.based_on_public_records }} 条</el-tag>
+    <section class="panel-grid">
+      <el-card class="panel-card" shadow="hover">
+        <div class="section-head compact">
+          <div>
+            <h2 class="section-title">AI 个性化建议</h2>
+            <p class="section-subtitle">基于公开记录生成的轻量建议</p>
+          </div>
+          <el-tag type="success" effect="plain">{{ aiHomeAdvice.based_on_public_records }} 条记录</el-tag>
         </div>
-        <ul class="ai-advice-list">
-          <li v-for="(item, idx) in aiHomeAdvice.recommendations" :key="`rec-${idx}`">{{ item }}</li>
+        <p class="advice-summary">{{ aiHomeAdvice.summary }}</p>
+        <ul class="advice-list">
+          <li v-for="(item, idx) in aiHomeAdvice.recommendations" :key="`advice-${idx}`">{{ item }}</li>
         </ul>
-        <div v-if="aiHomeAdvice.insights.length" class="ai-insights">
-          <el-tag v-for="(insight, idx) in aiHomeAdvice.insights" :key="`insight-${idx}`" size="small" effect="light">{{ insight }}</el-tag>
+        <div v-if="aiHomeAdvice.insights.length" class="insight-list">
+          <el-tag v-for="(insight, idx) in aiHomeAdvice.insights" :key="`insight-${idx}`" effect="light">{{ insight }}</el-tag>
         </div>
       </el-card>
-    </div>
-    
-    <!-- 快速操作卡片 -->
-    <div class="quick-actions">
-      <h2 class="section-title">快速操作</h2>
-      <div class="action-cards">
-        <el-card 
-          v-for="(action, index) in quickActions" 
-          :key="index"
-          class="action-card"
-          :class="`action-${index + 1}`"
-          shadow="hover"
-          @click="handleActionClick(action)"
-        >
-          <div class="action-content">
-            <div class="action-icon">
-              <el-icon :size="32" :color="action.color">
-                <component :is="action.icon" />
-              </el-icon>
+
+      <el-card class="panel-card" shadow="hover">
+        <div class="section-head compact">
+          <div>
+            <h2 class="section-title">快捷操作</h2>
+            <p class="section-subtitle">常用功能一键直达</p>
+          </div>
+        </div>
+        <div class="action-cards">
+          <button v-for="action in quickActions" :key="action.title" type="button" class="action-card" @click="handleActionClick(action)">
+            <div class="action-icon" :style="{ color: action.color, background: `${action.color}18` }">
+              <el-icon><component :is="action.icon" /></el-icon>
             </div>
             <div class="action-info">
-              <h3>{{ action.title }}</h3>
-              <p>{{ action.description }}</p>
+              <strong>{{ action.title }}</strong>
+              <span>{{ action.description }}</span>
             </div>
-            <div class="action-arrow">
-              <el-icon><ArrowRight /></el-icon>
-            </div>
+            <el-icon class="action-arrow"><ArrowRight /></el-icon>
+          </button>
+        </div>
+      </el-card>
+    </section>
+
+    <section class="panel-grid two-equal">
+      <el-card class="panel-card" shadow="hover">
+        <div class="section-head compact">
+          <div>
+            <h2 class="section-title">健康概览</h2>
+            <p class="section-subtitle">用更直观的指标观察日常健康状态</p>
           </div>
-        </el-card>
-      </div>
-    </div>
-    
-    <!-- 健康概览 -->
-    <div class="health-overview">
-      <h2 class="section-title">健康概览</h2>
-      <div class="overview-grid">
-        <el-card class="overview-card" shadow="hover">
-          <div class="overview-header">
-            <div class="overview-icon">
-              <el-icon size="28" color="#409EFF"><DataAnalysis /></el-icon>
+        </div>
+        <div class="overview-grid">
+          <div v-for="item in overviewCards" :key="item.title" class="overview-card">
+            <div class="overview-icon" :style="{ background: item.bg }">
+              <el-icon :color="item.color"><component :is="item.icon" /></el-icon>
             </div>
-            <div class="overview-trend">
-              <span class="trend-up">+12%</span>
-            </div>
-          </div>
-          <div class="overview-content">
-            <h3>健康评分</h3>
-            <div class="score-display">
-              <span class="score-number">85</span>
-              <span class="score-max">/100</span>
-            </div>
-            <p class="overview-desc">较上月提升 5 分</p>
-          </div>
-        </el-card>
-        
-        <el-card class="overview-card" shadow="hover">
-          <div class="overview-header">
-            <div class="overview-icon">
-              <el-icon size="28" color="#67C23A"><Calendar /></el-icon>
-            </div>
-            <div class="overview-trend">
-              <span class="trend-stable">稳定</span>
-            </div>
-          </div>
-          <div class="overview-content">
-            <h3>运动记录</h3>
-            <div class="stat-display">
-              <span class="stat-number">156</span>
-              <span class="stat-unit">次</span>
-            </div>
-            <p class="overview-desc">本月累计运动</p>
-          </div>
-        </el-card>
-        
-        <el-card class="overview-card" shadow="hover">
-          <div class="overview-header">
-            <div class="overview-icon">
-              <el-icon size="28" color="#E6A23C"><ChatDotRound /></el-icon>
-            </div>
-            <div class="overview-trend">
-              <span class="trend-up">+8</span>
-            </div>
-          </div>
-          <div class="overview-content">
-            <h3>AI咨询</h3>
-            <div class="stat-display">
-              <span class="stat-number">24</span>
-              <span class="stat-unit">次</span>
-            </div>
-            <p class="overview-desc">本月智能咨询</p>
-          </div>
-        </el-card>
-        
-        <el-card class="overview-card" shadow="hover">
-          <div class="overview-header">
-            <div class="overview-icon">
-              <el-icon size="28" color="#F56C6C"><Bell /></el-icon>
-            </div>
-            <div class="overview-trend">
-              <span class="trend-down">-2</span>
-            </div>
-          </div>
-          <div class="overview-content">
-            <h3>健康提醒</h3>
-            <div class="stat-display">
-              <span class="stat-number">12</span>
-              <span class="stat-unit">个</span>
-            </div>
-            <p class="overview-desc">活跃提醒事项</p>
-          </div>
-        </el-card>
-      </div>
-    </div>
-    
-    <!-- 最近活动 -->
-    <div class="recent-activities">
-      <h2 class="section-title">最近活动</h2>
-      <el-card class="activities-card" shadow="hover">
-        <div class="activity-list">
-          <div 
-            v-for="(activity, index) in recentActivities" 
-            :key="index"
-            class="activity-item"
-          >
-            <div class="activity-icon" :style="{ backgroundColor: activity.bgColor }">
-              <el-icon :size="16" :color="activity.color">
-                <component :is="activity.icon" />
-              </el-icon>
-            </div>
-            <div class="activity-content">
-              <h4>{{ activity.title }}</h4>
-              <p>{{ activity.description }}</p>
-            </div>
-            <div class="activity-time">
-              <span>{{ activity.time }}</span>
-            </div>
+            <strong>{{ item.value }}</strong>
+            <span>{{ item.title }}</span>
+            <small>{{ item.description }}</small>
           </div>
         </div>
       </el-card>
-    </div>
+
+      <el-card class="panel-card" shadow="hover">
+        <div class="section-head compact">
+          <div>
+            <h2 class="section-title">最近动态</h2>
+            <p class="section-subtitle">最近一次使用系统的重点轨迹</p>
+          </div>
+        </div>
+        <div class="activity-list">
+          <div v-for="activity in recentActivities" :key="activity.title" class="activity-item">
+            <div class="activity-icon" :style="{ background: activity.bgColor, color: activity.color }">
+              <el-icon><component :is="activity.icon" /></el-icon>
+            </div>
+            <div class="activity-content">
+              <strong>{{ activity.title }}</strong>
+              <p>{{ activity.description }}</p>
+            </div>
+            <span class="activity-time">{{ activity.time }}</span>
+          </div>
+        </div>
+      </el-card>
+    </section>
   </div>
 </template>
 
 <script setup>
-import { ref, computed, onMounted } from 'vue'
+import { computed, onMounted, ref } from 'vue'
 import { useRouter } from 'vue-router'
 import { knowledgeApi } from '../api/knowledge'
 import { aiApi } from '../api/ai'
@@ -226,34 +192,23 @@ import { aiApi } from '../api/ai'
 const router = useRouter()
 
 const quickActions = ref([
-  {
-    title: '健康趋势',
-    description: '查看您的健康数据趋势',
-    icon: 'TrendCharts',
-    color: '#409EFF',
-    route: '/dashboard/health-data'
-  },
-  {
-    title: '健康记录',
-    description: '记录每日健康数据',
-    icon: 'Calendar',
-    color: '#67C23A',
-    route: '/dashboard/health-data'
-  },
-  {
-    title: 'AI助手',
-    description: '获取智能健康建议',
-    icon: 'ChatDotRound',
-    color: '#E6A23C',
-    route: '/dashboard/ai-chat'
-  },
-  {
-    title: '健康提醒',
-    description: '个性化健康提醒',
-    icon: 'Bell',
-    color: '#F56C6C',
-    route: '/dashboard/profile'
-  }
+  { title: '健康趋势', description: '查看你的健康数据趋势', icon: 'TrendCharts', color: '#409EFF', route: '/dashboard/health-data' },
+  { title: '健康记录', description: '补充和整理每日健康信息', icon: 'Calendar', color: '#67C23A', route: '/dashboard/health-data' },
+  { title: 'AI 助手', description: '获取个性化健康建议', icon: 'ChatDotRound', color: '#E6A23C', route: '/dashboard/ai-chat' },
+  { title: '个人中心', description: '查看资料与系统设置', icon: 'User', color: '#F56C6C', route: '/dashboard/profile' }
+])
+
+const overviewCards = ref([
+  { title: '数据记录', value: '128', description: '已累计录入健康数据', icon: 'DataAnalysis', color: '#409EFF', bg: 'rgba(64, 158, 255, 0.14)' },
+  { title: '文章阅读', value: '24', description: '本周已阅读健康文章', icon: 'Reading', color: '#67C23A', bg: 'rgba(103, 194, 58, 0.14)' },
+  { title: 'AI 咨询', value: '12', description: '本月与 AI 的咨询次数', icon: 'ChatDotRound', color: '#E6A23C', bg: 'rgba(230, 162, 60, 0.14)' },
+  { title: '提醒计划', value: '6', description: '当前生效的健康提醒', icon: 'Bell', color: '#F56C6C', bg: 'rgba(245, 108, 108, 0.14)' }
+])
+
+const recentActivities = ref([
+  { title: '完成今天的健康记录', description: '已补充体重、血压和睡眠时长。', icon: 'DataAnalysis', color: '#409EFF', bgColor: 'rgba(64, 158, 255, 0.12)', time: '今天' },
+  { title: '阅读营养饮食文章', description: '查看了适合工作日的轻食搭配建议。', icon: 'Reading', color: '#67C23A', bgColor: 'rgba(103, 194, 58, 0.12)', time: '2 小时前' },
+  { title: '完成 AI 问答', description: '咨询了关于作息调整和运动安排的问题。', icon: 'ChatDotRound', color: '#E6A23C', bgColor: 'rgba(230, 162, 60, 0.12)', time: '昨天' }
 ])
 
 const pushedArticles = ref([])
@@ -263,41 +218,6 @@ const aiHomeAdvice = ref({
   insights: [],
   based_on_public_records: 0
 })
-
-const recentActivities = ref([
-  {
-    title: '完成今日运动',
-    description: '跑步 5 公里，消耗 300 卡路里',
-    icon: 'TrendCharts',
-    color: '#409EFF',
-    bgColor: 'rgba(64, 158, 255, 0.1)',
-    time: '2小时前'
-  },
-  {
-    title: 'AI健康咨询',
-    description: '询问关于睡眠质量的建议',
-    icon: 'ChatDotRound',
-    color: '#E6A23C',
-    bgColor: 'rgba(230, 162, 60, 0.1)',
-    time: '4小时前'
-  },
-  {
-    title: '记录血压数据',
-    description: '血压 120/80 mmHg，正常范围',
-    icon: 'DataAnalysis',
-    color: '#67C23A',
-    bgColor: 'rgba(103, 194, 58, 0.1)',
-    time: '昨天'
-  },
-  {
-    title: '设置用药提醒',
-    description: '每日 9:00 服用维生素',
-    icon: 'Bell',
-    color: '#F56C6C',
-    bgColor: 'rgba(245, 108, 108, 0.1)',
-    time: '2天前'
-  }
-])
 
 const todayDate = computed(() => {
   const now = new Date()
@@ -320,6 +240,14 @@ const handleActionClick = (action) => {
 const goArticle = (articleId) => {
   router.push(`/dashboard/knowledge-center/article/${articleId}`)
 }
+
+const getArticleBannerStyle = (article) => ({
+  backgroundImage: article?.cover_image
+    ? `linear-gradient(135deg, rgba(20, 42, 84, 0.72), rgba(36, 99, 235, 0.55)), url(${article.cover_image})`
+    : 'linear-gradient(120deg, #2f6fd6 0%, #36a3f5 50%, #5ec7b9 100%)',
+  backgroundSize: 'cover',
+  backgroundPosition: 'center'
+})
 
 const loadRecommendations = async () => {
   try {
@@ -347,7 +275,7 @@ const loadAiHomeAdvice = async () => {
     }
   } catch {
     aiHomeAdvice.value = {
-      summary: '个性化建议加载失败，请稍后再试。',
+      summary: '个性化建议加载失败，请稍后重试。',
       recommendations: [],
       insights: [],
       based_on_public_records: 0
@@ -358,193 +286,202 @@ const loadAiHomeAdvice = async () => {
 onMounted(() => {
   loadRecommendations()
   loadAiHomeAdvice()
-  // 添加页面加载动画
-  const observer = new IntersectionObserver((entries) => {
-    entries.forEach(entry => {
-      if (entry.isIntersecting) {
-        entry.target.classList.add('animate-in')
-      }
-    })
-  })
-  
-  document.querySelectorAll('.action-card, .overview-card').forEach(el => {
-    observer.observe(el)
-  })
 })
 </script>
 
 <style scoped>
 .home-container {
-  max-width: 1400px;
+  max-width: 1440px;
   margin: 0 auto;
-  padding: 0;
-}
-
-/* 欢迎区域 */
-.welcome-section {
-  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-  border-radius: 20px;
-  padding: 40px;
-  margin-bottom: 32px;
-  position: relative;
-  overflow: hidden;
-  box-shadow: 0 20px 40px rgba(0, 0, 0, 0.1);
-}
-
-.welcome-section::before {
-  content: '';
-  position: absolute;
-  top: -50%;
-  right: -10%;
-  width: 300px;
-  height: 300px;
-  background: rgba(255, 255, 255, 0.1);
-  border-radius: 50%;
-  animation: float 6s ease-in-out infinite;
-}
-
-.welcome-content {
   display: flex;
-  justify-content: space-between;
-  align-items: center;
+  flex-direction: column;
+  gap: 28px;
+}
+
+.hero-section {
+  display: grid;
+  grid-template-columns: minmax(0, 1.35fr) minmax(320px, 0.9fr);
+  gap: 24px;
+  padding: 32px;
+  border-radius: 28px;
+  color: #fff;
+  background: linear-gradient(135deg, #3b82f6 0%, #4f46e5 48%, #0ea5e9 100%);
+  box-shadow: 0 24px 50px rgba(59, 130, 246, 0.22);
+  overflow: hidden;
+}
+
+.hero-copy,
+.hero-visual {
   position: relative;
   z-index: 1;
 }
 
-.welcome-text {
-  flex: 1;
-  color: white;
+.hero-kicker {
+  display: inline-flex;
+  padding: 6px 12px;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.16);
+  font-size: 12px;
+  letter-spacing: 1px;
 }
 
-.welcome-title {
-  font-size: 48px;
-  font-weight: 700;
-  margin-bottom: 16px;
+.hero-copy h1 {
+  margin: 14px 0 10px;
+  font-size: 42px;
   line-height: 1.2;
 }
 
-.title-gradient {
-  background: linear-gradient(135deg, #ffffff 0%, #f0f0f0 100%);
-  -webkit-background-clip: text;
-  -webkit-text-fill-color: transparent;
-  background-clip: text;
+.hero-copy p {
+  margin: 0;
+  max-width: 680px;
+  line-height: 1.8;
+  color: rgba(255, 255, 255, 0.92);
 }
 
-.welcome-subtitle {
-  font-size: 20px;
-  margin-bottom: 32px;
-  opacity: 0.9;
-}
-
-.welcome-stats {
+.hero-actions {
   display: flex;
-  gap: 40px;
+  flex-wrap: wrap;
+  gap: 12px;
+  margin-top: 24px;
 }
 
-.stat-item {
-  display: flex;
-  flex-direction: column;
-  gap: 4px;
+.hero-metrics {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 14px;
+  margin-top: 28px;
 }
 
-.stat-number {
-  font-size: 24px;
-  font-weight: 600;
+.metric-card,
+.visual-card {
+  padding: 18px;
+  border-radius: 20px;
+  background: rgba(255, 255, 255, 0.16);
+  backdrop-filter: blur(12px);
 }
 
-.stat-label {
-  font-size: 14px;
-  opacity: 0.8;
+.metric-card strong,
+.visual-card strong {
+  display: block;
+  font-size: 22px;
 }
 
-.welcome-visual {
-  position: relative;
-  width: 200px;
-  height: 200px;
+.metric-card span,
+.visual-card span {
+  display: block;
+  margin-top: 6px;
+  color: rgba(255, 255, 255, 0.84);
+  font-size: 13px;
 }
 
-.floating-cards {
-  position: relative;
-  width: 100%;
-  height: 100%;
+.hero-visual {
+  min-height: 280px;
 }
 
-.floating-card {
+.visual-card {
   position: absolute;
-  width: 60px;
-  height: 60px;
+  width: 220px;
+}
+
+.visual-card.primary {
+  top: 18px;
+  right: 0;
+}
+
+.visual-card.secondary {
+  left: 24px;
+  bottom: 22px;
+}
+
+.floating-icon {
+  position: absolute;
+  display: grid;
+  place-items: center;
+  width: 56px;
+  height: 56px;
+  border-radius: 16px;
   background: rgba(255, 255, 255, 0.2);
   backdrop-filter: blur(10px);
-  border-radius: 16px;
+  font-size: 22px;
+}
+
+.icon-heart {
+  left: 10px;
+  top: 20px;
+}
+
+.icon-trend {
+  right: 84px;
+  top: 132px;
+}
+
+.icon-bell {
+  right: 34px;
+  bottom: 24px;
+}
+
+.panel-section,
+.panel-card {
+  border-radius: 24px;
+}
+
+.section-head {
   display: flex;
   align-items: center;
-  justify-content: center;
-  animation: float-card 4s ease-in-out infinite;
+  justify-content: space-between;
+  gap: 16px;
 }
 
-.card-1 {
-  top: 20px;
-  right: 40px;
-  animation-delay: 0s;
+.section-head.compact {
+  margin-bottom: 12px;
 }
 
-.card-2 {
-  top: 80px;
-  right: 100px;
-  animation-delay: 1s;
+.section-title {
+  margin: 0;
+  font-size: 26px;
+  color: #0f172a;
 }
 
-.card-3 {
-  bottom: 40px;
-  right: 20px;
-  animation-delay: 2s;
+.section-subtitle {
+  margin: 8px 0 0;
+  color: #64748b;
 }
 
-@keyframes float-card {
-  0%, 100% {
-    transform: translateY(0px) rotate(0deg);
-  }
-  50% {
-    transform: translateY(-10px) rotate(5deg);
-  }
-}
-
-/* 快速操作 */
-.quick-actions {
-  margin-bottom: 32px;
-}
-
-.home-recommendations {
-  margin-bottom: 32px;
+.recommend-showcase {
+  display: grid;
+  grid-template-columns: minmax(0, 1.8fr) minmax(280px, 0.9fr);
+  gap: 18px;
+  margin-top: 16px;
 }
 
 .recommend-carousel-wrap {
-  border-radius: 16px;
+  border-radius: 24px;
   overflow: hidden;
-  box-shadow: 0 12px 28px rgba(15, 23, 42, 0.14);
+  box-shadow: 0 18px 40px rgba(15, 23, 42, 0.16);
+  border: 1px solid rgba(148, 163, 184, 0.16);
 }
 
 .recommend-slide {
   position: relative;
   width: 100%;
   height: 100%;
-  padding: 28px;
+  padding: 32px;
   cursor: pointer;
-  background: linear-gradient(120deg, #2f6fd6 0%, #36a3f5 50%, #5ec7b9 100%);
   display: flex;
   align-items: flex-end;
+  background-repeat: no-repeat;
 }
 
 .slide-overlay {
   position: absolute;
   inset: 0;
-  background: radial-gradient(circle at 85% 25%, rgba(255, 255, 255, 0.28), transparent 40%);
+  background: linear-gradient(180deg, rgba(15, 23, 42, 0.08) 0%, rgba(15, 23, 42, 0.48) 100%), radial-gradient(circle at 85% 25%, rgba(255, 255, 255, 0.22), transparent 40%);
 }
 
 .slide-content {
   position: relative;
   z-index: 1;
-  max-width: 760px;
+  max-width: 720px;
   color: #ffffff;
 }
 
@@ -552,406 +489,270 @@ onMounted(() => {
   display: flex;
   justify-content: space-between;
   align-items: center;
-  margin-bottom: 10px;
+  margin-bottom: 12px;
 }
 
 .slide-content h3 {
-  margin: 0 0 8px;
-  font-size: 30px;
-  color: #ffffff;
-  line-height: 1.4;
-  text-shadow: 0 4px 16px rgba(0, 0, 0, 0.25);
+  margin: 0 0 10px;
+  font-size: 32px;
+  line-height: 1.35;
 }
 
 .slide-content p {
   margin: 0;
-  font-size: 15px;
-  color: rgba(255, 255, 255, 0.95);
-  line-height: 1.5;
-  line-clamp: 2;
-  display: -webkit-box;
-  -webkit-line-clamp: 2;
-  -webkit-box-orient: vertical;
-  overflow: hidden;
+  max-width: 620px;
+  line-height: 1.75;
+  color: rgba(255, 255, 255, 0.94);
 }
 
+.slide-actions {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  margin-top: 18px;
+}
+
+.slide-tip,
 .recommend-meta {
   font-size: 13px;
   color: rgba(255, 255, 255, 0.9);
 }
 
-.recommend-carousel-wrap :deep(.el-carousel__button) {
-  width: 18px;
-  border-radius: 999px;
+.recommend-side {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  padding: 20px;
+  border-radius: 24px;
+  background: linear-gradient(180deg, #ffffff 0%, #f8fbff 100%);
+  box-shadow: 0 16px 36px rgba(15, 23, 42, 0.08);
 }
 
-.recommend-carousel-wrap :deep(.el-carousel__arrow) {
-  background: rgba(0, 0, 0, 0.25);
+.side-panel-title {
+  font-size: 18px;
+  font-weight: 700;
+  color: #0f172a;
+}
+
+.side-article {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+  padding: 14px;
+  border: 1px solid #e5edf8;
+  border-radius: 18px;
+  background: #f8fbff;
+  text-align: left;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.side-article:hover,
+.action-card:hover,
+.activity-item:hover,
+.overview-card:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 16px 28px rgba(15, 23, 42, 0.08);
+}
+
+.side-rank {
+  min-width: 36px;
+  height: 36px;
+  display: grid;
+  place-items: center;
+  border-radius: 12px;
+  background: linear-gradient(135deg, #2563eb, #60a5fa);
+  color: #fff;
+  font-weight: 700;
+}
+
+.side-info {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.side-info strong {
+  color: #0f172a;
+  line-height: 1.5;
+}
+
+.side-info small {
+  color: #64748b;
 }
 
 .recommend-empty {
-  border-radius: 14px;
+  margin-top: 16px;
+  border-radius: 18px;
   border: 1px dashed #d8e4f6;
   background: #f8fbff;
   text-align: center;
 }
 
-.ai-advice-head {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  gap: 12px;
-  text-align: left;
+.panel-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 1.2fr) minmax(360px, 0.95fr);
+  gap: 18px;
 }
 
-.ai-advice-list {
-  margin: 14px 0 8px;
-  padding-left: 18px;
-  text-align: left;
+.panel-grid.two-equal {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.panel-card {
+  border: none;
+  box-shadow: 0 16px 36px rgba(15, 23, 42, 0.08);
+}
+
+.advice-summary {
+  margin: 6px 0 0;
   color: #334155;
   line-height: 1.8;
 }
 
-.ai-insights {
+.advice-list {
+  margin: 16px 0 0;
+  padding-left: 18px;
+  color: #334155;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.insight-list {
   display: flex;
   flex-wrap: wrap;
-  gap: 8px;
+  gap: 10px;
+  margin-top: 16px;
 }
 
-.recommend-empty p {
-  margin: 0 0 12px;
-  color: #64748b;
+.action-cards,
+.activity-list {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
 }
 
-.section-title {
-  font-size: 24px;
-  font-weight: 600;
-  color: #1e293b;
-  margin-bottom: 20px;
+.action-card,
+.activity-item {
   display: flex;
   align-items: center;
-  gap: 8px;
-}
-
-.section-title::before {
-  content: '';
-  width: 4px;
-  height: 24px;
-  background: linear-gradient(135deg, #409EFF, #36A3F5);
-  border-radius: 2px;
-}
-
-.action-cards {
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
-  gap: 20px;
-}
-
-.action-card {
-  border-radius: 16px;
-  border: none;
+  gap: 14px;
+  width: 100%;
+  padding: 16px;
+  border: 1px solid #e5edf7;
+  border-radius: 18px;
+  background: #f8fbff;
+  text-align: left;
   cursor: pointer;
-  transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
-  opacity: 0;
-  transform: translateY(20px);
+  transition: all 0.2s ease;
 }
 
-.action-card.animate-in {
-  opacity: 1;
-  transform: translateY(0);
+.action-icon,
+.activity-icon,
+.overview-icon {
+  width: 48px;
+  height: 48px;
+  display: grid;
+  place-items: center;
+  border-radius: 14px;
+  font-size: 20px;
 }
 
-.action-card:hover {
-  transform: translateY(-8px);
-  box-shadow: 0 20px 40px rgba(0, 0, 0, 0.15);
-}
-
-.action-content {
+.action-info,
+.activity-content {
   display: flex;
-  align-items: center;
-  gap: 16px;
-  padding: 8px;
-}
-
-.action-icon {
-  width: 64px;
-  height: 64px;
-  border-radius: 16px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  background: rgba(64, 158, 255, 0.1);
-  flex-shrink: 0;
-}
-
-.action-info {
   flex: 1;
+  flex-direction: column;
+  gap: 4px;
 }
 
-.action-info h3 {
-  font-size: 18px;
-  font-weight: 600;
-  color: #1e293b;
-  margin-bottom: 4px;
+.action-info strong,
+.activity-content strong {
+  color: #0f172a;
 }
 
-.action-info p {
-  font-size: 14px;
-  color: #64748b;
+.action-info span,
+.activity-content p,
+.activity-time {
   margin: 0;
+  color: #64748b;
+  font-size: 13px;
 }
 
 .action-arrow {
   color: #94a3b8;
-  transition: all 0.3s ease;
-}
-
-.action-card:hover .action-arrow {
-  color: #409EFF;
-  transform: translateX(4px);
-}
-
-/* 健康概览 */
-.health-overview {
-  margin-bottom: 32px;
 }
 
 .overview-grid {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
-  gap: 20px;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 14px;
 }
 
 .overview-card {
-  border-radius: 16px;
-  border: none;
-  opacity: 0;
-  transform: translateY(20px);
+  padding: 18px;
+  border-radius: 18px;
+  border: 1px solid #e8eef7;
+  background: #f8fbff;
+  transition: all 0.2s ease;
 }
 
-.overview-card.animate-in {
-  opacity: 1;
-  transform: translateY(0);
-}
-
-.overview-card:hover {
-  transform: translateY(-4px);
-  box-shadow: 0 12px 24px rgba(0, 0, 0, 0.1);
-}
-
-.overview-header {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  margin-bottom: 16px;
-}
-
-.overview-icon {
-  width: 56px;
-  height: 56px;
-  border-radius: 12px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  background: rgba(64, 158, 255, 0.1);
-}
-
-.overview-trend {
-  padding: 4px 8px;
-  border-radius: 6px;
-  font-size: 12px;
-  font-weight: 600;
-}
-
-.trend-up {
-  background: rgba(103, 194, 58, 0.1);
-  color: #67C23A;
-}
-
-.trend-down {
-  background: rgba(245, 108, 108, 0.1);
-  color: #F56C6C;
-}
-
-.trend-stable {
-  background: rgba(230, 162, 60, 0.1);
-  color: #E6A23C;
-}
-
-.overview-content h3 {
-  font-size: 16px;
-  color: #64748b;
-  margin-bottom: 8px;
-  font-weight: 500;
-}
-
-.score-display {
-  display: flex;
-  align-items: baseline;
-  gap: 4px;
-  margin-bottom: 8px;
-}
-
-.score-number {
-  font-size: 32px;
-  font-weight: 700;
-  color: #1e293b;
-}
-
-.score-max {
-  font-size: 16px;
-  color: #94a3b8;
-}
-
-.stat-display {
-  display: flex;
-  align-items: baseline;
-  gap: 4px;
-  margin-bottom: 8px;
-}
-
-.stat-number {
+.overview-card strong {
+  display: block;
+  margin-top: 14px;
   font-size: 28px;
-  font-weight: 700;
-  color: #1e293b;
+  color: #0f172a;
 }
 
-.stat-unit {
-  font-size: 14px;
-  color: #94a3b8;
-}
-
-.overview-desc {
-  font-size: 14px;
-  color: #64748b;
-  margin: 0;
-}
-
-/* 最近活动 */
-.recent-activities {
-  margin-bottom: 32px;
-}
-
-.activities-card {
-  border-radius: 16px;
-  border: none;
-}
-
-.activity-list {
-  display: flex;
-  flex-direction: column;
-  gap: 16px;
-}
-
-.activity-item {
-  display: flex;
-  align-items: center;
-  gap: 16px;
-  padding: 16px;
-  border-radius: 12px;
-  transition: all 0.3s ease;
-}
-
-.activity-item:hover {
-  background: #f8fafc;
-}
-
-.activity-icon {
-  width: 40px;
-  height: 40px;
-  border-radius: 10px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  flex-shrink: 0;
-}
-
-.activity-content {
-  flex: 1;
-}
-
-.activity-content h4 {
-  font-size: 16px;
+.overview-card span {
+  display: block;
+  margin-top: 6px;
+  color: #334155;
   font-weight: 600;
-  color: #1e293b;
-  margin-bottom: 4px;
 }
 
-.activity-content p {
-  font-size: 14px;
+.overview-card small {
+  display: block;
+  margin-top: 6px;
   color: #64748b;
-  margin: 0;
+  line-height: 1.6;
 }
 
-.activity-time {
-  font-size: 14px;
-  color: #94a3b8;
-  flex-shrink: 0;
-}
-
-/* 响应式设计 */
-@media (max-width: 768px) {
-  .welcome-section {
-    padding: 24px;
-  }
-  
-  .welcome-content {
-    flex-direction: column;
-    text-align: center;
-    gap: 24px;
-  }
-  
-  .welcome-title {
-    font-size: 32px;
-  }
-  
-  .welcome-subtitle {
-    font-size: 16px;
-  }
-  
-  .welcome-stats {
-    justify-content: center;
-  }
-  
-  .welcome-visual {
-    display: none;
-  }
-  
-  .action-cards {
+@media (max-width: 1200px) {
+  .hero-section,
+  .recommend-showcase,
+  .panel-grid,
+  .panel-grid.two-equal {
     grid-template-columns: 1fr;
   }
+}
 
-  .recommend-slide {
-    padding: 20px;
-    height: 230px;
+@media (max-width: 768px) {
+  .home-container {
+    gap: 20px;
   }
 
-  .slide-content h3 {
-    font-size: 22px;
+  .hero-section {
+    padding: 22px;
   }
-  
+
+  .hero-copy h1 {
+    font-size: 32px;
+  }
+
+  .hero-metrics,
   .overview-grid {
     grid-template-columns: 1fr;
   }
-  
-  .activity-item {
+
+  .section-head {
     flex-direction: column;
     align-items: flex-start;
-    gap: 12px;
   }
-  
-  .activity-time {
-    align-self: flex-end;
-  }
-}
 
-/* 动画 */
-@keyframes float {
-  0%, 100% {
-    transform: translateY(0px) rotate(0deg);
-  }
-  50% {
-    transform: translateY(-20px) rotate(180deg);
+  .slide-content h3 {
+    font-size: 24px;
   }
 }
 </style>

@@ -1,113 +1,84 @@
-<template>
+﻿<template>
   <div class="dashboard-container">
     <el-container>
-      <!-- 侧边栏 -->
-      <el-aside :width="sidebarCollapsed ? '64px' : '260px'" class="sidebar">
+      <el-aside :width="sidebarCollapsed ? '72px' : '260px'" class="sidebar">
         <div class="logo-container">
-          <div class="logo-wrapper">
-            <el-icon size="32" color="#409EFF" class="logo-icon">
-              <Heart />
-            </el-icon>
-            <transition name="fade">
-              <span v-show="!sidebarCollapsed" class="logo-text">健康管理系统</span>
-            </transition>
-          </div>
+          <el-icon size="30" color="#60a5fa"><Heart /></el-icon>
+          <span v-show="!sidebarCollapsed" class="logo-text">健康管理系统</span>
         </div>
-        
+
         <el-menu
           :default-active="activeMenu"
           class="sidebar-menu"
           :collapse="sidebarCollapsed"
-          background-color="#1e293b"
+          background-color="#10233d"
           text-color="#94a3b8"
           active-text-color="#ffffff"
           router
         >
           <el-menu-item index="/dashboard">
             <el-icon><House /></el-icon>
-            <template #title>
-              <span class="menu-title">首页</span>
-            </template>
+            <template #title>首页</template>
           </el-menu-item>
-          
           <el-menu-item index="/dashboard/health-data">
             <el-icon><DataAnalysis /></el-icon>
-            <template #title>
-              <span class="menu-title">健康数据</span>
-            </template>
+            <template #title>健康数据</template>
           </el-menu-item>
-          
           <el-menu-item index="/dashboard/ai-chat">
             <el-icon><ChatDotRound /></el-icon>
-            <template #title>
-              <span class="menu-title">AI健康助手</span>
-            </template>
+            <template #title>AI 健康助手</template>
           </el-menu-item>
-          
           <el-menu-item index="/dashboard/knowledge-center">
             <el-icon><Reading /></el-icon>
-            <template #title>
-              <span class="menu-title">健康知识中心</span>
-            </template>
+            <template #title>健康知识中心</template>
           </el-menu-item>
-          
           <el-menu-item index="/dashboard/profile">
             <el-icon><User /></el-icon>
-            <template #title>
-              <span class="menu-title">个人中心</span>
-            </template>
+            <template #title>个人中心</template>
           </el-menu-item>
         </el-menu>
       </el-aside>
-      
-      <!-- 主内容区 -->
+
       <el-container>
-        <!-- 顶部导航栏 -->
         <el-header class="header">
           <div class="header-left">
-            <el-button
-              type="text"
-              @click="toggleSidebar"
-              class="sidebar-toggle"
-            >
-              <el-icon size="20" class="toggle-icon">
+            <el-button text class="sidebar-toggle" @click="toggleSidebar">
+              <el-icon size="18">
                 <Fold v-if="!sidebarCollapsed" />
                 <Expand v-else />
               </el-icon>
             </el-button>
-            
-            <div class="breadcrumb">
-              <el-breadcrumb separator="/">
-                <el-breadcrumb-item :to="{ path: '/dashboard' }">首页</el-breadcrumb-item>
-                <el-breadcrumb-item v-if="currentPageName">{{ currentPageName }}</el-breadcrumb-item>
-              </el-breadcrumb>
-            </div>
+
+            <el-breadcrumb separator="/">
+              <el-breadcrumb-item :to="{ path: '/dashboard' }">首页</el-breadcrumb-item>
+              <el-breadcrumb-item v-if="currentPageName">{{ currentPageName }}</el-breadcrumb-item>
+            </el-breadcrumb>
           </div>
-          
+
           <div class="header-right">
             <div class="header-actions">
-              <el-button type="text" class="action-btn">
-                <el-icon size="18"><Bell /></el-icon>
-              </el-button>
-              <el-button type="text" class="action-btn">
-                <el-icon size="18"><Setting /></el-icon>
-              </el-button>
+              <el-tooltip content="最近阅读" placement="bottom">
+                <el-button text class="action-btn" @click="openNotifications">
+                  <el-icon size="18"><Bell /></el-icon>
+                </el-button>
+              </el-tooltip>
+              <el-tooltip content="个人设置" placement="bottom">
+                <el-button text class="action-btn" @click="openSettings">
+                  <el-icon size="18"><Setting /></el-icon>
+                </el-button>
+              </el-tooltip>
             </div>
-            
+
             <el-dropdown @command="handleCommand" class="user-dropdown">
               <div class="user-info">
                 <el-avatar :size="36" :src="userAvatar" class="user-avatar">
                   <el-icon><User /></el-icon>
                 </el-avatar>
-                <transition name="fade">
-                  <div v-show="!sidebarCollapsed" class="user-details">
-                    <span class="username">{{ username }}</span>
-                    <span class="user-role">健康用户</span>
-                  </div>
-                </transition>
-                <el-icon class="dropdown-icon">
-                  <ArrowDown />
-                </el-icon>
+                <div v-show="!sidebarCollapsed" class="user-details">
+                  <span class="username">{{ username }}</span>
+                  <span class="user-role">健康用户</span>
+                </div>
+                <el-icon class="dropdown-icon"><ArrowDown /></el-icon>
               </div>
               <template #dropdown>
                 <el-dropdown-menu>
@@ -128,8 +99,7 @@
             </el-dropdown>
           </div>
         </el-header>
-        
-        <!-- 主要内容 -->
+
         <el-main class="main-content">
           <div class="content-wrapper">
             <router-view v-slot="{ Component }">
@@ -141,36 +111,52 @@
         </el-main>
       </el-container>
     </el-container>
+
+    <el-drawer v-model="notificationDrawerVisible" title="最近阅读" size="420px">
+      <div v-loading="historyLoading" class="notification-drawer">
+        <el-empty v-if="!historyLoading && !recentReadHistory.length" description="暂时没有阅读记录" />
+        <div v-else class="notification-list">
+          <div v-for="item in recentReadHistory" :key="`${item.article_id}-${item.last_read_at}`" class="notification-item">
+            <div class="notification-main">
+              <div class="notification-title">{{ item.article_title }}</div>
+              <div class="notification-subtitle">{{ item.category }}</div>
+              <div class="notification-meta">
+                <span>最近阅读：{{ formatDateTime(item.last_read_at) }}</span>
+                <span>阅读次数：{{ item.read_count }}</span>
+              </div>
+            </div>
+            <el-button text type="primary" @click="openHistoryArticle(item.article_id)">查看</el-button>
+          </div>
+        </div>
+      </div>
+    </el-drawer>
   </div>
 </template>
 
 <script setup>
-import { ref, computed } from 'vue'
-import { useRouter, useRoute } from 'vue-router'
+import { computed, ref } from 'vue'
+import { useRoute, useRouter } from 'vue-router'
 import { ElMessage, ElMessageBox } from 'element-plus'
+import { knowledgeApi } from '../api/knowledge'
+import { clearAuthStorage, redirectToLogin } from '../utils/auth'
 
 const router = useRouter()
 const route = useRoute()
 const sidebarCollapsed = ref(false)
+const userAvatar = ref('')
+const notificationDrawerVisible = ref(false)
+const historyLoading = ref(false)
+const recentReadHistory = ref([])
 
 const username = computed(() => localStorage.getItem('username') || '用户')
-const userAvatar = ref('')
-const activeMenu = computed(() => {
-  if (route.path.startsWith('/dashboard/knowledge-center/article/')) {
-    return '/dashboard/knowledge-center'
-  }
-  return route.path
-})
-
+const activeMenu = computed(() => route.path.startsWith('/dashboard/knowledge-center/article/') ? '/dashboard/knowledge-center' : route.path)
 const currentPageName = computed(() => {
-  if (route.path.startsWith('/dashboard/knowledge-center/article/')) {
-    return '文章详情'
-  }
+  if (route.path.startsWith('/dashboard/knowledge-center/article/')) return '文章详情'
 
   const routeMap = {
     '/dashboard': '首页',
     '/dashboard/health-data': '健康数据',
-    '/dashboard/ai-chat': 'AI健康助手',
+    '/dashboard/ai-chat': 'AI 健康助手',
     '/dashboard/knowledge-center': '健康知识中心',
     '/dashboard/profile': '个人中心'
   }
@@ -181,13 +167,40 @@ const toggleSidebar = () => {
   sidebarCollapsed.value = !sidebarCollapsed.value
 }
 
+const formatDateTime = (dateString) => {
+  if (!dateString) return '-'
+  return new Date(dateString).toLocaleString('zh-CN', { hour12: false })
+}
+
+const openNotifications = async () => {
+  notificationDrawerVisible.value = true
+  historyLoading.value = true
+  try {
+    recentReadHistory.value = await knowledgeApi.getReadHistory(12)
+  } catch (error) {
+    recentReadHistory.value = []
+    ElMessage.error(error?.response?.data?.detail || '加载阅读记录失败')
+  } finally {
+    historyLoading.value = false
+  }
+}
+
+const openSettings = () => {
+  router.push('/dashboard/profile')
+}
+
+const openHistoryArticle = (articleId) => {
+  notificationDrawerVisible.value = false
+  router.push(`/dashboard/knowledge-center/article/${articleId}`)
+}
+
 const handleCommand = async (command) => {
   switch (command) {
     case 'profile':
       router.push('/dashboard/profile')
       break
     case 'settings':
-      ElMessage.info('设置功能开发中...')
+      openSettings()
       break
     case 'logout':
       try {
@@ -196,10 +209,10 @@ const handleCommand = async (command) => {
           cancelButtonText: '取消',
           type: 'warning'
         })
-        localStorage.removeItem('token')
-        localStorage.removeItem('username')
+        clearAuthStorage()
         ElMessage.success('已退出登录')
-        router.push('/login')
+        await router.push('/login')
+        redirectToLogin(false)
       } catch {
         // 用户取消
       }
@@ -220,159 +233,66 @@ const handleCommand = async (command) => {
 }
 
 .sidebar {
-  background: linear-gradient(180deg, #1d3557 0%, #16324f 100%);
-  box-shadow: 4px 0 24px rgba(0, 0, 0, 0.1);
-  transition: width 0.3s cubic-bezier(0.4, 0, 0.2, 1);
-  position: relative;
-  z-index: 100;
-  height: 100vh;
-  display: flex;
-  flex-direction: column;
-}
-
-.sidebar::after {
-  content: '';
-  position: absolute;
-  right: 0;
-  top: 0;
-  bottom: 0;
-  width: 1px;
-  background: linear-gradient(180deg, transparent, rgba(255, 255, 255, 0.1), transparent);
+  background: linear-gradient(180deg, #12243e 0%, #0d1b30 100%);
+  box-shadow: 4px 0 24px rgba(15, 23, 42, 0.12);
 }
 
 .logo-container {
-  padding: 24px 20px;
-  border-bottom: 1px solid rgba(255, 255, 255, 0.1);
-  background: rgba(255, 255, 255, 0.02);
-}
-
-.logo-wrapper {
+  height: 76px;
   display: flex;
   align-items: center;
   justify-content: center;
-  gap: 12px;
-}
-
-.logo-icon {
-  flex-shrink: 0;
+  gap: 10px;
+  color: #fff;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.08);
 }
 
 .logo-text {
-  font-size: 18px;
   font-weight: 700;
-  color: #ffffff;
-  white-space: nowrap;
+  letter-spacing: 0.5px;
 }
 
 .sidebar-menu {
-  border: none;
-  padding: 20px 12px;
-  flex: 1;
-  overflow-y: auto;
-}
-
-.sidebar-menu .el-menu-item {
-  height: 48px;
-  line-height: 48px;
-  margin: 4px 0;
-  border-radius: 12px;
-  transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
-  position: relative;
-  overflow: hidden;
-}
-
-.sidebar-menu .el-menu-item::before {
-  content: '';
-  position: absolute;
-  left: 0;
-  top: 50%;
-  transform: translateY(-50%);
-  width: 3px;
-  height: 0;
-  background: #409EFF;
-  border-radius: 0 2px 2px 0;
-  transition: height 0.3s ease;
-}
-
-.sidebar-menu .el-menu-item:hover {
-  background: rgba(64, 158, 255, 0.1);
-  color: #ffffff;
-  transform: translateX(4px);
-}
-
-.sidebar-menu .el-menu-item.is-active {
-  background: linear-gradient(135deg, rgba(64, 158, 255, 0.2), rgba(64, 158, 255, 0.1));
-  color: #ffffff;
-}
-
-.sidebar-menu .el-menu-item.is-active::before {
-  height: 24px;
-}
-
-.menu-title {
-  font-weight: 500;
-  margin-left: 8px;
+  border-right: none;
+  padding-top: 10px;
 }
 
 .header {
-  background: linear-gradient(90deg, #ffffff 0%, #f4f9ff 100%);
-  border-bottom: 1px solid #dbeafe;
   display: flex;
+  align-items: center;
   justify-content: space-between;
-  align-items: center;
   padding: 0 24px;
-  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.04);
-  position: relative;
-  z-index: 50;
+  background: rgba(255, 255, 255, 0.92);
+  backdrop-filter: blur(12px);
+  border-bottom: 1px solid rgba(226, 232, 240, 0.9);
 }
 
-.header-left {
+.header-left,
+.header-right,
+.header-actions,
+.user-info {
   display: flex;
   align-items: center;
-  gap: 20px;
 }
 
-.sidebar-toggle {
-  padding: 8px;
-  border-radius: 8px;
-  transition: all 0.3s ease;
-}
-
-.sidebar-toggle:hover {
-  background: #f1f5f9;
-  color: #409EFF;
-}
-
-.toggle-icon {
-  transition: transform 0.3s ease;
-}
-
-.breadcrumb {
-  font-size: 14px;
-}
-
+.header-left,
 .header-right {
-  display: flex;
-  align-items: center;
-  gap: 16px;
+  gap: 14px;
 }
 
-.header-actions {
-  display: flex;
-  align-items: center;
-  gap: 8px;
+.action-btn,
+.sidebar-toggle {
+  width: 38px;
+  height: 38px;
+  border-radius: 12px;
+  background: #f8fbff;
+  color: #334155;
 }
 
-.action-btn {
-  padding: 8px;
-  border-radius: 8px;
-  color: #64748b;
-  transition: all 0.3s ease;
-}
-
-.action-btn:hover {
-  background: #f1f5f9;
-  color: #409EFF;
+.action-btn:hover,
+.sidebar-toggle:hover {
+  background: #e8f1ff;
+  color: #2563eb;
 }
 
 .user-dropdown {
@@ -380,168 +300,100 @@ const handleCommand = async (command) => {
 }
 
 .user-info {
-  display: flex;
-  align-items: center;
-  gap: 12px;
+  gap: 10px;
   padding: 8px 12px;
-  border-radius: 12px;
-  transition: all 0.3s ease;
-  background: #f8fafc;
-}
-
-.user-info:hover {
-  background: #f1f5f9;
-  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.08);
-}
-
-.user-avatar {
-  border: 2px solid #ffffff;
-  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+  border-radius: 16px;
+  background: #f8fbff;
 }
 
 .user-details {
   display: flex;
   flex-direction: column;
-  gap: 2px;
 }
 
 .username {
+  color: #0f172a;
   font-weight: 600;
-  color: #1e293b;
-  font-size: 14px;
 }
 
 .user-role {
-  font-size: 12px;
   color: #64748b;
+  font-size: 12px;
 }
 
 .dropdown-icon {
   color: #64748b;
-  transition: transform 0.3s ease;
-  font-size: 14px;
 }
 
 .main-content {
-  background: transparent;
-  padding: 16px;
-  overflow-y: auto;
+  padding: 0;
 }
 
 .content-wrapper {
-  padding: 24px;
-  min-height: 100%;
-  overflow: visible;
-  background: rgba(255, 255, 255, 0.55);
-  backdrop-filter: blur(8px);
-  border: 1px solid #e5f0ff;
-  border-radius: 18px;
+  height: 100%;
+  overflow: auto;
+  padding: 20px;
 }
 
-/* 动画 */
-.fade-enter-active,
-.fade-leave-active {
-  transition: opacity 0.3s ease;
+.notification-list {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
 }
 
-.fade-enter-from,
-.fade-leave-to {
-  opacity: 0;
+.notification-item {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 14px;
+  border-radius: 14px;
+  border: 1px solid #e5edf7;
+  background: #f8fbff;
 }
 
-.fade-slide-enter-active {
-  transition: all 0.4s cubic-bezier(0.4, 0, 0.2, 1);
+.notification-title {
+  font-weight: 600;
+  color: #0f172a;
 }
 
+.notification-subtitle {
+  margin-top: 4px;
+  color: #2563eb;
+  font-size: 13px;
+}
+
+.notification-meta {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  margin-top: 8px;
+  color: #64748b;
+  font-size: 12px;
+}
+
+.fade-slide-enter-active,
 .fade-slide-leave-active {
-  transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+  transition: all 0.2s ease;
 }
 
-.fade-slide-enter-from {
-  opacity: 0;
-  transform: translateX(20px);
-}
-
+.fade-slide-enter-from,
 .fade-slide-leave-to {
   opacity: 0;
-  transform: translateX(-20px);
+  transform: translateY(8px);
 }
 
-/* 滚动条样式 */
-.content-wrapper::-webkit-scrollbar {
-  width: 6px;
-}
-
-.content-wrapper::-webkit-scrollbar-track {
-  background: transparent;
-}
-
-.content-wrapper::-webkit-scrollbar-thumb {
-  background: #cbd5e1;
-  border-radius: 3px;
-}
-
-.content-wrapper::-webkit-scrollbar-thumb:hover {
-  background: #94a3b8;
-}
-
-/* 响应式设计 */
-@media (max-width: 768px) {
-  .sidebar {
-    position: fixed;
-    left: 0;
-    top: 0;
-    bottom: 0;
-    z-index: 1000;
-  }
-  
-  .sidebar.collapsed {
-    transform: translateX(-100%);
-  }
-  
+@media (max-width: 900px) {
   .header {
     padding: 0 16px;
   }
-  
-  .breadcrumb {
-    display: none;
-  }
-  
-  .user-details {
-    display: none;
-  }
-  
+
   .content-wrapper {
     padding: 16px;
   }
-}
 
-/* Element Plus 样式覆盖 */
-:deep(.el-menu--collapse) {
-  width: 64px;
-}
-
-:deep(.el-menu--collapse .el-menu-item) {
-  padding: 0 20px;
-}
-
-:deep(.el-dropdown-menu__item) {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  padding: 8px 16px;
-}
-
-:deep(.el-breadcrumb__inner) {
-  color: #64748b;
-  font-weight: 500;
-}
-
-:deep(.el-breadcrumb__inner.is-link) {
-  color: #409EFF;
-}
-
-:deep(.el-breadcrumb__separator) {
-  color: #cbd5e1;
+  .user-details,
+  .logo-text {
+    display: none;
+  }
 }
 </style>

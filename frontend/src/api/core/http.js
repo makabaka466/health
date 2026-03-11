@@ -1,4 +1,5 @@
 import axios from 'axios'
+import { clearAuthStorage, redirectToLogin } from '../../utils/auth'
 
 const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || 'http://127.0.0.1:8000/api'
 
@@ -13,17 +14,13 @@ function resolveToken(tokenMode) {
 }
 
 function handleUnauthorized(tokenMode) {
-  localStorage.removeItem('token')
-  localStorage.removeItem('adminToken')
-  localStorage.removeItem('username')
-  localStorage.removeItem('adminUsername')
-  localStorage.removeItem('userRole')
+  clearAuthStorage()
 
   if (tokenMode === 'admin' || (tokenMode === 'both' && window.location.pathname.startsWith('/admin'))) {
-    window.location.href = '/admin/login'
+    redirectToLogin(true)
     return
   }
-  window.location.href = '/login'
+  redirectToLogin(false)
 }
 
 export function createHttpClient({ timeout = 10000, tokenMode = 'both', unwrapData = true } = {}) {

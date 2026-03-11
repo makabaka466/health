@@ -61,6 +61,13 @@ class RagKnowledgeDocListResponse(BaseModel):
     page_size: int
 
 
+class RagKnowledgeImportResponse(BaseModel):
+    items: List[RagKnowledgeDocResponse] = Field(default_factory=list)
+    imported_count: int = 0
+    skipped_files: List[str] = Field(default_factory=list)
+    message: str
+
+
 class AdminUserResponse(BaseModel):
     username: str
     email: str
@@ -117,6 +124,7 @@ class HealthArticleResponse(HealthArticleBase):
     id: int
     view_count: int
     favorite_count: int = 0
+    is_favorited: bool = False
     created_at: datetime
     updated_at: datetime
 
@@ -134,6 +142,7 @@ class HealthArticleListResponse(BaseModel):
 class FavoriteResponse(BaseModel):
     article_id: int
     is_favorited: bool
+    favorite_count: int = 0
 
 
 class ReadingHistoryResponse(BaseModel):
@@ -271,10 +280,26 @@ class KnowledgeResponse(KnowledgeBase):
 
 class AdminSystemSettings(BaseModel):
     project_name: str = "健康管理系统"
+    project_subtitle: str = "智能健康数据与知识服务平台"
+    welcome_message: str = "欢迎使用健康管理系统，请根据角色进入对应工作台。"
+    support_email: str = "support@health.local"
+    support_phone: str = "400-800-2026"
     allow_user_register: bool = True
+    allow_social_login: bool = True
     ai_enabled: bool = True
+    knowledge_import_enabled: bool = True
+    article_auto_publish: bool = False
+    enable_operation_log: bool = True
+    enable_blockchain_sync: bool = False
     maintenance_mode: bool = False
     default_health_data_public: bool = False
+    default_article_cover: str = ""
+    session_timeout_minutes: int = 120
+    max_upload_size_mb: int = 20
+    homepage_banner_title: str = "科学管理健康，智能辅助决策"
+    homepage_banner_subtitle: str = "聚合健康数据、知识内容与 AI 分析能力"
+    password_min_length: int = 6
+    log_retention_days: int = 30
 
 
 class AdminSystemLogResponse(BaseModel):

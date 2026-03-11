@@ -2,9 +2,9 @@ from fastapi import APIRouter, Depends, Query
 from sqlalchemy.orm import Session
 
 from app.database import get_db
+from app.features.admin.service import AdminSystemService
 from app.features.auth.dependencies import get_current_admin
 from app.schemas import AdminSystemLogResponse, AdminSystemSettings
-from app.features.admin.service import AdminSystemService
 
 
 router = APIRouter()
