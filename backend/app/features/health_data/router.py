@@ -11,6 +11,7 @@ from app.config import settings
 from app.database import get_db
 from app import models, schemas
 from app.features.auth.dependencies import get_current_user
+from app.features.auth.service import AuthService
 from app.features.blockchain.service import chain_service
 from app.features.blockchain.encryption import (
     decrypt_binary,
@@ -90,6 +91,37 @@ def _public_storage_key() -> str:
     return f"health-data-public::{settings.SECRET_KEY or 'health-data-default'}"
 
 
+def _build_source_payload(
+    file_type: str,
+    *,
+    data_content: Optional[str] = None,
+    pdf_bytes: Optional[bytes] = None,
+) -> str:
+    if file_type == "pdf":
+        if not pdf_bytes:
+            return ""
+        encoded = base64.b64encode(pdf_bytes).decode("utf-8")
+        return f"data:application/pdf;base64,{encoded}"
+    return data_content or ""
+
+
+def _hash_payload(payload: str) -> Optional[str]:
+    if not payload:
+        return None
+    return "0x" + hashlib.sha256(payload.encode("utf-8")).hexdigest()
+
+
+def _resolve_chain_private_key(user: models.User, explicit_private_key: Optional[str]) -> Optional[str]:
+    if explicit_private_key:
+        return explicit_private_key
+    if not user.encrypted_private_key:
+        return None
+    try:
+        return normalize_private_key(AuthService.decrypt_private_key_from_storage(user.encrypted_private_key))
+    except ValueError:
+        return None
+
+
 def _resolve_record_values(
     record: models.HealthData,
     private_key: Optional[str] = None,
@@ -116,8 +148,52 @@ def _resolve_record_values(
     return data_content, pdf_bytes, requires_private_key
 
 
-def _serialize_record(record: models.HealthData, private_key: Optional[str] = None) -> dict:
+def _verify_record_onchain(
+    record: models.HealthData,
+    *,
+    data_content: Optional[str],
+    pdf_bytes: Optional[bytes],
+) -> tuple[Optional[bool], Optional[str]]:
+    if not record.onchain_data_id:
+        return None, "?????"
+    if not chain_service.enabled:
+        return None, "?????????"
+
+    source_payload = _build_source_payload(record.file_type, data_content=data_content, pdf_bytes=pdf_bytes)
+    if not source_payload:
+        if not record.is_public:
+            return None, "????????????????"
+        return None, "???????????"
+
+    expected_hash = _hash_payload(source_payload)
+    if not expected_hash:
+        return None, "???????????"
+
+    try:
+        chain_record = chain_service.get_health_record(data_id_hex=record.onchain_data_id)
+    except Exception as exc:  # noqa: BLE001
+        return None, f"???????{exc}"
+
+    if not chain_record:
+        return False, "???????????"
+
+    chain_hash = (chain_record.get("data_hash") or "").lower()
+    if chain_hash == expected_hash.lower():
+        return True, "????????"
+    return False, "?????????????????????????"
+
+
+def _serialize_record(
+    record: models.HealthData,
+    private_key: Optional[str] = None,
+    current_user: Optional[models.User] = None,
+) -> dict:
     data_content, pdf_bytes, requires_private_key = _resolve_record_values(record, private_key)
+    onchain_verified, onchain_verification_message = _verify_record_onchain(
+        record,
+        data_content=data_content,
+        pdf_bytes=pdf_bytes,
+    )
 
     pdf_data_base64 = None
     if pdf_bytes:
@@ -133,7 +209,10 @@ def _serialize_record(record: models.HealthData, private_key: Optional[str] = No
         "pdf_data_base64": pdf_data_base64,
         "is_public": record.is_public,
         "requires_private_key": requires_private_key,
+        "onchain_data_id": record.onchain_data_id,
         "onchain_tx_hash": record.onchain_tx_hash,
+        "onchain_verified": onchain_verified,
+        "onchain_verification_message": onchain_verification_message,
         "created_at": record.created_at,
         "updated_at": record.updated_at,
     }
@@ -145,7 +224,7 @@ async def create_health_record(
     db: Session = Depends(get_db),
     current_user: models.User = Depends(get_current_user)
 ):
-    """创建健康数据记录"""
+    """Create a health data record."""
     file_type = "pdf" if health_data.file_type == "pdf" else "text"
     pdf_data, pdf_size, _ = _decode_pdf_data(health_data.pdf_data_base64 if file_type == "pdf" else None)
     is_public = bool(health_data.is_public)
@@ -159,6 +238,7 @@ async def create_health_record(
         raise HTTPException(status_code=400, detail="文本健康数据不能为空")
 
     public_storage_key = _public_storage_key()
+    chain_private_key = _resolve_chain_private_key(current_user, explicit_private_key)
     data_content = None
     encrypted_data_content = None
     plain_pdf_data = None
@@ -188,27 +268,27 @@ async def create_health_record(
         is_public=is_public,
     )
 
-    if explicit_private_key:
-        source_payload = health_data.data_content or (health_data.pdf_data_base64 or "")
-        if source_payload:
-            data_hash_hex = "0x" + hashlib.sha256(source_payload.encode("utf-8")).hexdigest()
-            try:
-                chain_result = chain_service.store_health_data(
-                    owner_private_key=explicit_private_key,
-                    data_hash_hex=data_hash_hex,
-                    encrypted_digest_source=source_payload,
-                    data_type=file_type,
-                )
-                if chain_result:
-                    db_record.onchain_tx_hash = chain_result.get("tx_hash")
-            except Exception as exc:  # noqa: BLE001
-                raise HTTPException(status_code=400, detail=f"上链失败：{exc}") from exc
-    
+    source_payload = _build_source_payload(file_type, data_content=health_data.data_content, pdf_bytes=pdf_data)
+    data_hash_hex = _hash_payload(source_payload)
+    if chain_private_key and source_payload and data_hash_hex:
+        try:
+            chain_result = chain_service.store_health_data(
+                owner_private_key=chain_private_key,
+                data_hash_hex=data_hash_hex,
+                encrypted_digest_source=source_payload,
+                data_type=file_type,
+            )
+            if chain_result:
+                db_record.onchain_tx_hash = chain_result.get("tx_hash")
+                db_record.onchain_data_id = chain_result.get("data_id")
+        except Exception as exc:  # noqa: BLE001
+            raise HTTPException(status_code=400, detail=f"上链失败：{exc}") from exc
+
     db.add(db_record)
     db.commit()
     db.refresh(db_record)
-    
-    return _serialize_record(db_record, explicit_private_key)
+
+    return _serialize_record(db_record, explicit_private_key, current_user)
 
 
 @router.get("/records", response_model=List[schemas.HealthDataResponse])
@@ -231,7 +311,7 @@ async def get_health_records(
     
     records = query.order_by(models.HealthData.created_at.desc()).offset(skip).limit(limit).all()
     validated_key, _ = _resolve_effective_private_key(current_user, private_key)
-    return [_serialize_record(item, validated_key) for item in records]
+    return [_serialize_record(item, validated_key, current_user) for item in records]
 
 
 @router.get("/records/{record_id}", response_model=schemas.HealthDataResponse)
@@ -251,7 +331,7 @@ async def get_health_record(
         raise HTTPException(status_code=404, detail="健康数据记录不存在")
     
     validated_key, _ = _resolve_effective_private_key(current_user, private_key)
-    return _serialize_record(record, validated_key)
+    return _serialize_record(record, validated_key, current_user)
 
 
 @router.put("/records/{record_id}", response_model=schemas.HealthDataResponse)
@@ -261,12 +341,12 @@ async def update_health_record(
     db: Session = Depends(get_db),
     current_user: models.User = Depends(get_current_user)
 ):
-    """更新健康数据记录"""
+    """Update a health data record and keep on-chain proof in sync."""
     record = db.query(models.HealthData).filter(
         models.HealthData.id == record_id,
         models.HealthData.user_id == current_user.id
     ).first()
-    
+
     if not record:
         raise HTTPException(status_code=404, detail="健康数据记录不存在")
 
@@ -275,6 +355,7 @@ async def update_health_record(
     private_key, _ = _resolve_effective_private_key(current_user, input_private_key)
     explicit_private_key = _validate_explicit_private_key(current_user, input_private_key)
     public_storage_key = _public_storage_key()
+    chain_private_key = _resolve_chain_private_key(current_user, explicit_private_key)
 
     if "data_title" in update_data:
         record.data_title = update_data["data_title"]
@@ -290,6 +371,9 @@ async def update_health_record(
 
     if target_file_type == "text" and "data_content" in update_data:
         record.data_content = None
+        record.pdf_data = None
+        record.pdf_size = None
+        record.encrypted_pdf_data = None
         if record.is_public:
             record.encrypted_data_content = encrypt_text(update_data["data_content"] or "", public_storage_key)
         else:
@@ -298,34 +382,45 @@ async def update_health_record(
     if target_file_type == "pdf" and "pdf_data_base64" in update_data:
         decoded_pdf, decoded_size, _ = _decode_pdf_data(update_data["pdf_data_base64"])
         if not decoded_pdf:
-            raise HTTPException(status_code=400, detail="\u8bf7\u4e0a\u4f20 PDF \u6587\u4ef6")
+            raise HTTPException(status_code=400, detail="请上传 PDF 文件")
 
         record.pdf_size = decoded_size
+        record.data_content = None
+        record.encrypted_data_content = None
         record.pdf_data = None
         if record.is_public:
             record.encrypted_pdf_data = encrypt_binary(decoded_pdf, public_storage_key)
         else:
             record.encrypted_pdf_data = encrypt_binary(decoded_pdf, explicit_private_key)
 
-    if explicit_private_key and ("data_content" in update_data or "pdf_data_base64" in update_data):
-        source_payload = update_data.get("data_content") or update_data.get("pdf_data_base64") or ""
-        if source_payload:
-            data_hash_hex = "0x" + hashlib.sha256(source_payload.encode("utf-8")).hexdigest()
-            try:
+    resolved_content, resolved_pdf_bytes, _ = _resolve_record_values(record, explicit_private_key)
+    source_payload = _build_source_payload(target_file_type, data_content=resolved_content, pdf_bytes=resolved_pdf_bytes)
+    data_hash_hex = _hash_payload(source_payload)
+    if chain_private_key and source_payload and data_hash_hex:
+        try:
+            if record.onchain_data_id:
+                chain_result = chain_service.update_health_data(
+                    owner_private_key=chain_private_key,
+                    data_id_hex=record.onchain_data_id,
+                    data_hash_hex=data_hash_hex,
+                    encrypted_digest_source=source_payload,
+                )
+            else:
                 chain_result = chain_service.store_health_data(
-                    owner_private_key=explicit_private_key,
+                    owner_private_key=chain_private_key,
                     data_hash_hex=data_hash_hex,
                     encrypted_digest_source=source_payload,
                     data_type=target_file_type,
                 )
-                if chain_result:
-                    record.onchain_tx_hash = chain_result.get("tx_hash")
-            except Exception as exc:  # noqa: BLE001
-                raise HTTPException(status_code=400, detail=f"上链失败：{exc}") from exc
-    
+            if chain_result:
+                record.onchain_tx_hash = chain_result.get("tx_hash")
+                record.onchain_data_id = chain_result.get("data_id") or record.onchain_data_id
+        except Exception as exc:  # noqa: BLE001
+            raise HTTPException(status_code=400, detail=f"上链失败：{exc}") from exc
+
     db.commit()
     db.refresh(record)
-    return _serialize_record(record, private_key)
+    return _serialize_record(record, private_key, current_user)
 
 
 @router.get("/public/records", response_model=List[schemas.HealthDataResponse])

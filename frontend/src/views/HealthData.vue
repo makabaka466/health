@@ -102,6 +102,17 @@
                       <span v-else>-</span>
                     </template>
                   </el-table-column>
+                  <el-table-column :label="onchainColumnText" width="140">
+                    <template #default="scope">
+                      <el-tag
+                        size="small"
+                        :type="resolveOnchainTagType(scope.row)"
+                        :title="resolveOnchainTitle(scope.row)"
+                      >
+                        {{ resolveOnchainLabel(scope.row) }}
+                      </el-tag>
+                    </template>
+                  </el-table-column>
                   <el-table-column :label="actionsColumnText">
                     <template #default="scope">
                       <el-button v-if="scope.row.requires_private_key" type="primary" text @click="unlockPrivateData">
@@ -328,6 +339,11 @@ const actionsColumnText = '\u64cd\u4f5c'
 const editText = '\u7f16\u8f91'
 const replacePdfText = '\u66ff\u6362PDF'
 const deleteText = '\u5220\u9664'
+const onchainColumnText = '\u94fe\u4e0a\u9a8c\u771f'
+const onchainVerifiedText = '\u5df2\u9a8c\u771f'
+const onchainMismatchText = '\u5f02\u5e38'
+const onchainPendingText = '\u5f85\u9a8c\u771f'
+const onchainUnavailableText = '\u672a\u5b58\u8bc1'
 const loadFailedText = '\u52a0\u8f7d\u5065\u5eb7\u6570\u636e\u5931\u8d25'
 const analysisSuccessText = '\u5065\u5eb7\u5206\u6790\u5b8c\u6210'
 const analysisFailedText = '\u5065\u5eb7\u5206\u6790\u5931\u8d25'
@@ -410,6 +426,10 @@ const toViewRecord = (record) => {
     record_type: fileType,
     is_private: !record.is_public,
     requires_private_key: !!record.requires_private_key,
+    onchain_data_id: record.onchain_data_id || '',
+    onchain_tx_hash: record.onchain_tx_hash || '',
+    onchain_verified: typeof record.onchain_verified === 'boolean' ? record.onchain_verified : null,
+    onchain_verification_message: record.onchain_verification_message || '',
     health_data_file: record.pdf_data_base64 || null,
     health_data_file_name: fileType === 'pdf' ? (record.data_title || '健康数据PDF') : null,
     recorded_at: record.created_at,
@@ -421,6 +441,24 @@ const toViewRecord = (record) => {
     blood_sugar: metrics.blood_sugar ?? null,
     other_text: parsed.other_text || ''
   }
+}
+
+const resolveOnchainLabel = (record) => {
+  if (!record.onchain_data_id) return onchainUnavailableText
+  if (record.onchain_verified === true) return onchainVerifiedText
+  if (record.onchain_verified === false) return onchainMismatchText
+  return onchainPendingText
+}
+
+const resolveOnchainTagType = (record) => {
+  if (!record.onchain_data_id) return 'info'
+  if (record.onchain_verified === true) return 'success'
+  if (record.onchain_verified === false) return 'danger'
+  return 'warning'
+}
+
+const resolveOnchainTitle = (record) => {
+  return record.onchain_verification_message || onchainUnavailableText
 }
 
 const statsCards = computed(() => {

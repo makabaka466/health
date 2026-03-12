@@ -232,7 +232,10 @@ class HealthDataResponse(HealthDataBase):
     id: int
     user_id: int
     requires_private_key: bool = False
+    onchain_data_id: Optional[str] = None
     onchain_tx_hash: Optional[str] = None
+    onchain_verified: Optional[bool] = None
+    onchain_verification_message: Optional[str] = None
     created_at: datetime
     updated_at: datetime
     
