@@ -13,6 +13,12 @@
         </div>
       </div>
       <div class="header-actions">
+        <el-button v-if="hasLockedPrivateRecords" class="unlock-btn" @click="unlockPrivateData">
+          {{ unlockButtonText }}
+        </el-button>
+        <el-button v-if="unlockedPrivateKey" class="unlock-btn" @click="clearUnlockedPrivateData">
+          {{ clearUnlockText }}
+        </el-button>
         <el-button type="primary" class="add-btn" @click="openManualDialog">
           <el-icon><Plus /></el-icon>
           手动录入
@@ -69,11 +75,16 @@
                   <el-table-column prop="blood_lipid" label="血脂" width="100" />
                   <el-table-column prop="heart_rate" label="心率" width="100" />
                   <el-table-column prop="blood_sugar" label="血糖" width="100" />
-                  <el-table-column label="隐私" width="100">
+                  <el-table-column :label="privacyColumnText" width="150">
                     <template #default="scope">
-                      <el-tag :type="scope.row.is_private ? 'warning' : 'success'" size="small">
-                        {{ scope.row.is_private ? '保密' : '公开' }}
-                      </el-tag>
+                      <el-space :size="6" wrap>
+                        <el-tag :type="scope.row.is_private ? 'warning' : 'success'" size="small">
+                          {{ scope.row.is_private ? privateText : publicText }}
+                        </el-tag>
+                        <el-tag v-if="scope.row.requires_private_key" type="danger" size="small">
+                          {{ lockedTagText }}
+                        </el-tag>
+                      </el-space>
                     </template>
                   </el-table-column>
                   <el-table-column label="记录类型" width="100">
@@ -91,12 +102,15 @@
                       <span v-else>-</span>
                     </template>
                   </el-table-column>
-                  <el-table-column label="操作">
+                  <el-table-column :label="actionsColumnText">
                     <template #default="scope">
-                      <el-button type="text" @click="editRecord(scope.row)">
-                        {{ scope.row.record_type === 'pdf' ? '替换PDF' : '编辑' }}
+                      <el-button v-if="scope.row.requires_private_key" type="primary" text @click="unlockPrivateData">
+                        {{ unlockButtonText }}
                       </el-button>
-                      <el-button type="text" style="color: #f56c6c" @click="deleteRecord(scope.row)">删除</el-button>
+                      <el-button type="text" @click="editRecord(scope.row)">
+                        {{ scope.row.record_type === 'pdf' ? replacePdfText : editText }}
+                      </el-button>
+                      <el-button type="text" style="color: #f56c6c" @click="deleteRecord(scope.row)">{{ deleteText }}</el-button>
                     </template>
                   </el-table-column>
                 </el-table>
@@ -268,7 +282,7 @@
 
 <script setup>
 import { ref, computed, onMounted } from 'vue'
-import { ElMessage } from 'element-plus'
+import { ElMessage, ElMessageBox } from 'element-plus'
 import { healthApi } from '../api/health'
 
 const healthRecords = ref([])
@@ -279,6 +293,7 @@ const isEditing = ref(false)
 const formMode = ref('manual')
 const saving = ref(false)
 const healthFormRef = ref()
+const unlockedPrivateKey = ref('')
 
 const healthForm = ref({
   weight: null,
@@ -294,6 +309,32 @@ const healthForm = ref({
   health_data_file: null,
   recorded_at: new Date()
 })
+
+const unlockButtonText = '\u89e3\u9501\u79c1\u5bc6\u6570\u636e'
+const clearUnlockText = '\u6e05\u9664\u89e3\u9501'
+const unlockSuccessText = '\u5df2\u89e3\u9501\u79c1\u5bc6\u5065\u5eb7\u6570\u636e'
+const unlockRequiredText = '\u8bf7\u8f93\u5165\u6ce8\u518c\u65f6\u4fdd\u5b58\u7684\u79c1\u94a5\u4ee5\u89e3\u9501\u79c1\u5bc6\u6570\u636e'
+const unlockDialogTitle = '\u89e3\u9501\u79c1\u5bc6\u6570\u636e'
+const unlockPlaceholder = '\u8bf7\u8f93\u5165 0x \u5f00\u5934\u7684\u79c1\u94a5'
+const unlockCanceledText = '\u5df2\u53d6\u6d88\u89e3\u9501'
+const lockedRecordText = '\u8be5\u8bb0\u5f55\u4e3a\u79c1\u5bc6\u6570\u636e\uff0c\u9700\u5148\u89e3\u9501'
+const unlockClearedText = '\u5df2\u6e05\u9664\u79c1\u94a5\u89e3\u9501\u72b6\u6001'
+const unlockInvalidText = '\u79c1\u94a5\u65e0\u6548\uff0c\u5df2\u6e05\u9664\u89e3\u9501\u72b6\u6001'
+const lockedTagText = '\u672a\u89e3\u9501'
+const privacyColumnText = '\u9690\u79c1'
+const privateText = '\u4fdd\u5bc6'
+const publicText = '\u516c\u5f00'
+const actionsColumnText = '\u64cd\u4f5c'
+const editText = '\u7f16\u8f91'
+const replacePdfText = '\u66ff\u6362PDF'
+const deleteText = '\u5220\u9664'
+const loadFailedText = '\u52a0\u8f7d\u5065\u5eb7\u6570\u636e\u5931\u8d25'
+const analysisSuccessText = '\u5065\u5eb7\u5206\u6790\u5b8c\u6210'
+const analysisFailedText = '\u5065\u5eb7\u5206\u6790\u5931\u8d25'
+
+const requestParams = computed(() => (
+  unlockedPrivateKey.value ? { private_key: unlockedPrivateKey.value } : {}
+))
 
 const healthRules = {
   weight: [{ type: 'number', message: '请输入有效的体重', trigger: 'blur' }],
@@ -367,7 +408,8 @@ const toViewRecord = (record) => {
   return {
     ...record,
     record_type: fileType,
-    is_private: fileType === 'pdf',
+    is_private: !record.is_public,
+    requires_private_key: !!record.requires_private_key,
     health_data_file: record.pdf_data_base64 || null,
     health_data_file_name: fileType === 'pdf' ? (record.data_title || '健康数据PDF') : null,
     recorded_at: record.created_at,
@@ -424,11 +466,61 @@ const pdfRecords = computed(() => healthRecords.value.filter((item) => item.reco
 const manualRecords = computed(() => healthRecords.value.filter((item) => item.record_type !== 'pdf').length)
 const privateRecords = computed(() => healthRecords.value.filter((item) => item.is_private).length)
 const publicRecords = computed(() => healthRecords.value.filter((item) => !item.is_private).length)
+const hasLockedPrivateRecords = computed(() => healthRecords.value.some((item) => item.requires_private_key))
 const latestRecordDate = computed(() => {
   if (!healthRecords.value.length) return '-'
   return formatDate(healthRecords.value[0].recorded_at)
 })
 const latestRecordLabel = computed(() => (healthRecords.value.length ? '已同步最近记录' : '暂无记录'))
+
+const requestPrivateKey = async () => {
+  try {
+    const { value } = await ElMessageBox.prompt(unlockRequiredText, unlockDialogTitle, {
+      confirmButtonText: '\u786e\u5b9a',
+      cancelButtonText: '\u53d6\u6d88',
+      inputPlaceholder: unlockPlaceholder,
+      inputValidator: (inputValue) => {
+        if (!inputValue || !inputValue.trim()) {
+          return unlockRequiredText
+        }
+        return true
+      }
+    })
+    return value?.trim() || ''
+  } catch {
+    ElMessage.info(unlockCanceledText)
+    return ''
+  }
+}
+
+const ensureUnlockedPrivateData = async () => {
+  if (unlockedPrivateKey.value) {
+    return unlockedPrivateKey.value
+  }
+
+  const privateKey = await requestPrivateKey()
+  if (!privateKey) {
+    return ''
+  }
+
+  unlockedPrivateKey.value = privateKey
+  ElMessage.success(unlockSuccessText)
+  return privateKey
+}
+
+const clearUnlockedPrivateData = () => {
+  unlockedPrivateKey.value = ''
+  ElMessage.success(unlockClearedText)
+  loadHealthData()
+}
+
+const unlockPrivateData = async () => {
+  const privateKey = await ensureUnlockedPrivateData()
+  if (!privateKey) {
+    return
+  }
+  await loadHealthData()
+}
 
 const openManualDialog = () => {
   formMode.value = 'manual'
@@ -470,7 +562,20 @@ const openPdfDialog = () => {
   dialogVisible.value = true
 }
 
-const editRecord = (record) => {
+const editRecord = async (record) => {
+  if (record.requires_private_key) {
+    const privateKey = await ensureUnlockedPrivateData()
+    if (!privateKey) {
+      return
+    }
+    await loadHealthData()
+    const unlockedRecord = healthRecords.value.find((item) => item.id === record.id)
+    if (!unlockedRecord) {
+      return
+    }
+    record = unlockedRecord
+  }
+
   const parsed = parseDataContent(record.data_content)
   const metrics = parsed.metrics || {}
   const bloodPressure = metrics.blood_pressure || (
@@ -560,6 +665,7 @@ const saveHealthData = async () => {
     const payload = {
       data_title: formMode.value === 'pdf' ? (healthForm.value.health_data_file_name || '健康数据PDF') : '手动健康记录',
       file_type: formMode.value === 'pdf' ? 'pdf' : 'text',
+      is_public: !healthForm.value.is_private,
       data_content: formMode.value === 'pdf'
         ? null
         : JSON.stringify({ metrics, other_text: healthForm.value.other_text || '' }),
@@ -573,6 +679,15 @@ const saveHealthData = async () => {
       }
 
       payload.data_content = null
+    }
+
+    if (healthForm.value.is_private) {
+      const privateKey = await ensureUnlockedPrivateData()
+      if (!privateKey) {
+        saving.value = false
+        return
+      }
+      payload.private_key = privateKey
     }
     
     if (isEditing.value) {
@@ -605,25 +720,39 @@ const deleteRecord = async (record) => {
 const loadHealthData = async () => {
   try {
     const [records, summary] = await Promise.all([
-      healthApi.getRecords(),
-      healthApi.getSummary()
+      healthApi.getRecords(requestParams.value),
+      healthApi.getSummary(requestParams.value)
     ])
     healthRecords.value = records.map(toViewRecord)
     healthSummary.value = summary
   } catch (error) {
-    ElMessage.error('加载健康数据失败')
+    if (unlockedPrivateKey.value && [400, 401, 403].includes(error?.response?.status)) {
+      unlockedPrivateKey.value = ''
+      ElMessage.error(unlockInvalidText)
+      return
+    }
+    ElMessage.error(extractErrorDetail(error, loadFailedText))
   }
 }
 
+
 const analyzeHealthData = async () => {
   try {
-    const analysis = await healthApi.analyzeData()
+    if (hasLockedPrivateRecords.value && !unlockedPrivateKey.value) {
+      const privateKey = await ensureUnlockedPrivateData()
+      if (!privateKey) {
+        return
+      }
+      await loadHealthData()
+    }
+    const analysis = await healthApi.analyzeData({}, requestParams.value)
     healthAnalysis.value = analysis
-    ElMessage.success('健康分析完成')
+    ElMessage.success(analysisSuccessText)
   } catch (error) {
-    ElMessage.error('健康分析失败')
+    ElMessage.error(extractErrorDetail(error, analysisFailedText))
   }
 }
+
 
 const refreshData = () => {
   loadHealthData()
@@ -633,7 +762,21 @@ const formatDate = (dateString) => {
   return new Date(dateString).toLocaleString('zh-CN')
 }
 
-const openPdf = (record) => {
+const openPdf = async (record) => {
+  if (record.requires_private_key) {
+    ElMessage.warning(lockedRecordText)
+    const privateKey = await ensureUnlockedPrivateData()
+    if (!privateKey) {
+      return
+    }
+    await loadHealthData()
+    const unlockedRecord = healthRecords.value.find((item) => item.id === record.id)
+    if (!unlockedRecord) {
+      return
+    }
+    record = unlockedRecord
+  }
+
   if (!record.health_data_file) return
   window.open(record.health_data_file, '_blank', 'noopener,noreferrer')
 }

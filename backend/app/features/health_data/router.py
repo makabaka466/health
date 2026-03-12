@@ -7,6 +7,7 @@ from typing import List, Optional
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
 
+from app.config import settings
 from app.database import get_db
 from app import models, schemas
 from app.features.auth.dependencies import get_current_user
@@ -77,21 +78,46 @@ def _resolve_effective_private_key(user: models.User, private_key: Optional[str]
     return None, None
 
 
-def _serialize_record(record: models.HealthData, private_key: Optional[str] = None) -> dict:
-    requires_private_key = bool(not record.is_public and (record.encrypted_data_content or record.encrypted_pdf_data))
+def _validate_explicit_private_key(user: models.User, private_key: Optional[str]) -> Optional[str]:
+    if not private_key:
+        return None
+    if not verify_user_private_key(private_key, user.wallet_address, user.private_key_hash):
+        raise HTTPException(status_code=403, detail="绉侀挜鏍￠獙澶辫触")
+    return normalize_private_key(private_key)
+
+
+def _public_storage_key() -> str:
+    return f"health-data-public::{settings.SECRET_KEY or 'health-data-default'}"
+
+
+def _resolve_record_values(
+    record: models.HealthData,
+    private_key: Optional[str] = None,
+    *,
+    source_is_public: Optional[bool] = None,
+) -> tuple[Optional[str], Optional[bytes], bool]:
+    is_public = record.is_public if source_is_public is None else source_is_public
+    requires_private_key = bool(not is_public and (record.encrypted_data_content or record.encrypted_pdf_data))
     data_content = record.data_content
     pdf_bytes = record.pdf_data
+    storage_key = _public_storage_key() if is_public else private_key
 
-    if requires_private_key and private_key:
+    if (record.encrypted_data_content or record.encrypted_pdf_data) and storage_key:
         try:
             if record.encrypted_data_content:
-                data_content = decrypt_text(record.encrypted_data_content, private_key)
+                data_content = decrypt_text(record.encrypted_data_content, storage_key)
             if record.encrypted_pdf_data:
-                pdf_bytes = decrypt_binary(record.encrypted_pdf_data, private_key)
+                pdf_bytes = decrypt_binary(record.encrypted_pdf_data, storage_key)
             requires_private_key = False
         except ValueError:
-            # 历史数据可能由原始私钥加密，若自动密钥无法解开则仍提示需要显式私钥。
-            requires_private_key = True
+            if not is_public:
+                requires_private_key = True
+
+    return data_content, pdf_bytes, requires_private_key
+
+
+def _serialize_record(record: models.HealthData, private_key: Optional[str] = None) -> dict:
+    data_content, pdf_bytes, requires_private_key = _resolve_record_values(record, private_key)
 
     pdf_data_base64 = None
     if pdf_bytes:
@@ -123,9 +149,8 @@ async def create_health_record(
     file_type = "pdf" if health_data.file_type == "pdf" else "text"
     pdf_data, pdf_size, _ = _decode_pdf_data(health_data.pdf_data_base64 if file_type == "pdf" else None)
     is_public = bool(health_data.is_public)
-    private_key, explicit_private_key = _resolve_effective_private_key(current_user, health_data.private_key)
-
-    if not is_public and not private_key:
+    explicit_private_key = _validate_explicit_private_key(current_user, health_data.private_key)
+    if not is_public and not explicit_private_key:
         raise HTTPException(status_code=400, detail="私密健康数据必须提供 private_key")
 
     if file_type == "pdf" and not pdf_data:
@@ -133,17 +158,23 @@ async def create_health_record(
     if file_type == "text" and not health_data.data_content:
         raise HTTPException(status_code=400, detail="文本健康数据不能为空")
 
-    data_content = health_data.data_content
+    public_storage_key = _public_storage_key()
+    data_content = None
     encrypted_data_content = None
-    plain_pdf_data = pdf_data
+    plain_pdf_data = None
     encrypted_pdf_data = None
 
-    if not is_public and private_key:
-        encrypted_data_content = encrypt_text(health_data.data_content or "", private_key)
-        data_content = None
-        if pdf_data:
-            encrypted_pdf_data = encrypt_binary(pdf_data, private_key)
-            plain_pdf_data = None
+    if file_type == "text":
+        if is_public:
+            encrypted_data_content = encrypt_text(health_data.data_content or "", public_storage_key)
+        elif explicit_private_key:
+            encrypted_data_content = encrypt_text(health_data.data_content or "", explicit_private_key)
+
+    if file_type == "pdf" and pdf_data:
+        if is_public:
+            encrypted_pdf_data = encrypt_binary(pdf_data, public_storage_key)
+        elif explicit_private_key:
+            encrypted_pdf_data = encrypt_binary(pdf_data, explicit_private_key)
 
     db_record = models.HealthData(
         user_id=current_user.id,
@@ -177,7 +208,7 @@ async def create_health_record(
     db.commit()
     db.refresh(db_record)
     
-    return _serialize_record(db_record, private_key)
+    return _serialize_record(db_record, explicit_private_key)
 
 
 @router.get("/records", response_model=List[schemas.HealthDataResponse])
@@ -240,7 +271,10 @@ async def update_health_record(
         raise HTTPException(status_code=404, detail="健康数据记录不存在")
 
     update_data = health_data.model_dump(exclude_unset=True)
-    private_key, explicit_private_key = _resolve_effective_private_key(current_user, update_data.pop("private_key", None))
+    input_private_key = update_data.pop("private_key", None)
+    private_key, _ = _resolve_effective_private_key(current_user, input_private_key)
+    explicit_private_key = _validate_explicit_private_key(current_user, input_private_key)
+    public_storage_key = _public_storage_key()
 
     if "data_title" in update_data:
         record.data_title = update_data["data_title"]
@@ -251,29 +285,27 @@ async def update_health_record(
     target_file_type = "pdf" if update_data.get("file_type", record.file_type) == "pdf" else "text"
     record.file_type = target_file_type
 
-    if not record.is_public and not private_key:
+    if not record.is_public and not explicit_private_key:
         raise HTTPException(status_code=400, detail="更新私密健康数据需要提供 private_key")
 
     if target_file_type == "text" and "data_content" in update_data:
+        record.data_content = None
         if record.is_public:
-            record.data_content = update_data["data_content"]
-            record.encrypted_data_content = None
+            record.encrypted_data_content = encrypt_text(update_data["data_content"] or "", public_storage_key)
         else:
-            record.data_content = None
-            record.encrypted_data_content = encrypt_text(update_data["data_content"] or "", private_key)
+            record.encrypted_data_content = encrypt_text(update_data["data_content"] or "", explicit_private_key)
 
     if target_file_type == "pdf" and "pdf_data_base64" in update_data:
         decoded_pdf, decoded_size, _ = _decode_pdf_data(update_data["pdf_data_base64"])
         if not decoded_pdf:
-            raise HTTPException(status_code=400, detail="请上传 PDF 文件")
+            raise HTTPException(status_code=400, detail="\u8bf7\u4e0a\u4f20 PDF \u6587\u4ef6")
 
         record.pdf_size = decoded_size
+        record.pdf_data = None
         if record.is_public:
-            record.pdf_data = decoded_pdf
-            record.encrypted_pdf_data = None
+            record.encrypted_pdf_data = encrypt_binary(decoded_pdf, public_storage_key)
         else:
-            record.pdf_data = None
-            record.encrypted_pdf_data = encrypt_binary(decoded_pdf, private_key)
+            record.encrypted_pdf_data = encrypt_binary(decoded_pdf, explicit_private_key)
 
     if explicit_private_key and ("data_content" in update_data or "pdf_data_base64" in update_data):
         source_payload = update_data.get("data_content") or update_data.get("pdf_data_base64") or ""
@@ -356,7 +388,7 @@ async def get_health_summary(
     records = db.query(models.HealthData).filter(
         models.HealthData.user_id == current_user.id
     ).all()
-    
+
     if not records:
         return {
             "total_records": 0,
@@ -365,37 +397,31 @@ async def get_health_summary(
             "average_heart_rate": None,
             "records_this_month": 0,
         }
-    
-    # 计算统计数据
+
     total_records = len(records)
     latest_record = records[0] if records else None
-    
-    # 计算平均值
+
     weights = []
     heart_rates = []
     for item in records:
-        content = item.data_content
-        if not item.is_public and item.encrypted_data_content and validated_key:
-            try:
-                content = decrypt_text(item.encrypted_data_content, validated_key)
-            except ValueError:
-                content = item.data_content
+        content, _, _ = _resolve_record_values(item, validated_key)
         metrics = _extract_metrics(content)
         if metrics.get("weight") is not None:
             weights.append(metrics.get("weight"))
         if metrics.get("heart_rate") is not None:
             heart_rates.append(metrics.get("heart_rate"))
-    
+
     summary = {
         "total_records": total_records,
         "latest_record": latest_record.created_at if latest_record else None,
         "average_weight": sum(weights) / len(weights) if weights else None,
         "average_heart_rate": sum(heart_rates) / len(heart_rates) if heart_rates else None,
-        "records_this_month": len([r for r in records 
-                                 if r.created_at.month == datetime.now().month 
-                                 and r.created_at.year == datetime.now().year])
+        "records_this_month": len([
+            r for r in records
+            if r.created_at.month == datetime.now().month and r.created_at.year == datetime.now().year
+        ]),
     }
-    
+
     return summary
 
 
@@ -409,43 +435,33 @@ async def analyze_health_data(
     """分析健康数据并提供建议"""
     validated_key, _ = _resolve_effective_private_key(current_user, private_key)
 
-    # 获取指定时间范围的数据
     query = db.query(models.HealthData).filter(models.HealthData.user_id == current_user.id)
-    
+
     if analysis_request.start_date:
         query = query.filter(models.HealthData.created_at >= analysis_request.start_date)
     if analysis_request.end_date:
         query = query.filter(models.HealthData.created_at <= analysis_request.end_date)
-    
+
     records = query.order_by(models.HealthData.created_at.desc()).all()
-    
+
     if not records:
         return {"analysis": "暂无数据可供分析", "recommendations": []}
-    
-    # 简单的健康分析逻辑
+
     recommendations = []
-    
-    # 分析血压
+
     latest_record = records[0]
-    latest_content = latest_record.data_content
-    if not latest_record.is_public and latest_record.encrypted_data_content and validated_key:
-        try:
-            latest_content = decrypt_text(latest_record.encrypted_data_content, validated_key)
-        except ValueError:
-            latest_content = latest_record.data_content
+    latest_content, _, _ = _resolve_record_values(latest_record, validated_key)
     metrics = _extract_metrics(latest_content)
     systolic = metrics.get("blood_pressure_systolic")
     diastolic = metrics.get("blood_pressure_diastolic")
     if systolic and diastolic:
-        
         if systolic > 140 or diastolic > 90:
             recommendations.append("您的血压偏高，建议咨询医生并注意低盐饮食")
         elif systolic < 90 or diastolic < 60:
             recommendations.append("您的血压偏低，建议适当增加运动和营养")
         else:
             recommendations.append("您的血压正常，请继续保持")
-    
-    # 分析心率
+
     heart_rate = metrics.get("heart_rate")
     if heart_rate:
         if heart_rate > 100:
@@ -454,8 +470,7 @@ async def analyze_health_data(
             recommendations.append("您的心率偏慢，如果您不是运动员，建议咨询医生")
         else:
             recommendations.append("您的心率正常，请继续保持")
-    
-    # 分析血糖
+
     blood_sugar = metrics.get("blood_sugar")
     if blood_sugar:
         if blood_sugar > 6.1:
@@ -464,10 +479,10 @@ async def analyze_health_data(
             recommendations.append("您的血糖偏低，建议规律饮食，避免低血糖")
         else:
             recommendations.append("您的血糖正常，请继续保持")
-    
+
     return {
         "analysis": f"基于您最近的{len(records)}条健康数据记录进行分析",
         "recommendations": recommendations,
         "data_points": len(records),
-        "analysis_date": datetime.now().isoformat()
+        "analysis_date": datetime.now().isoformat(),
     }
