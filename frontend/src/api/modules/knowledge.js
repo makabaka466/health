@@ -43,6 +43,14 @@ export const knowledgeApi = {
     return api.delete(`/knowledge/admin/articles/${articleId}`)
   },
 
+  async importArticles(formData) {
+    return api.post('/knowledge/admin/articles/import', formData, {
+      headers: {
+        'Content-Type': 'multipart/form-data'
+      }
+    })
+  },
+
   async getRagDocs(params = {}) {
     return api.get('/knowledge/admin/rag-docs', { params })
   },
@@ -69,5 +77,13 @@ export const knowledgeApi = {
 
   async deleteRagDoc(docId) {
     return api.delete(`/knowledge/admin/rag-docs/${docId}`)
+  },
+
+  async getRagDocChunks(docId, params = {}) {
+    return api.get(`/knowledge/admin/rag-docs/${docId}/chunks`, { params })
+  },
+
+  async getRagChunkVector(chunkId, params = {}) {
+    return api.get(`/knowledge/admin/rag-chunks/${chunkId}/vector`, { params })
   }
 }

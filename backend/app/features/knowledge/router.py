@@ -1,4 +1,6 @@
 import json
+import logging
+import re
 from io import BytesIO
 from pathlib import Path
 from datetime import datetime
@@ -9,8 +11,11 @@ from sqlalchemy import desc, func, or_
 from sqlalchemy.orm import Session
 
 from app import models, schemas
+from app.config import settings
 from app.database import get_db
 from app.features.auth.dependencies import get_current_user
+from app.features.rag.index_service import RagIndexError, delete_rag_document_index, sync_rag_document_index
+from app.features.rag.vector_store import VectorStoreError, get_points
 
 try:
     from pypdf import PdfReader
@@ -24,6 +29,7 @@ except ImportError:  # pragma: no cover
 
 
 router = APIRouter()
+logger = logging.getLogger(__name__)
 
 
 DEFAULT_RAG_DOCS = [
@@ -102,10 +108,41 @@ def _to_rag_doc_response(doc: models.RagKnowledgeDocument) -> schemas.RagKnowled
     )
 
 
+def _content_preview(text: str, limit: int = 120) -> str:
+    content = (text or "").strip()
+    if len(content) <= limit:
+        return content
+    return f"{content[:limit].rstrip()}..."
+
+
+def _normalize_vector(raw_vector) -> List[float]:
+    if isinstance(raw_vector, list):
+        return [float(item) for item in raw_vector]
+    return []
+
+
+def _build_qdrant_point_map(point_ids: List[str], with_vectors: bool = False) -> dict[str, dict]:
+    if not settings.RAG_VECTOR_ENABLED or not point_ids:
+        return {}
+    try:
+        points = get_points(point_ids, with_vectors=with_vectors)
+    except VectorStoreError as exc:
+        logger.warning("查询 Qdrant point 失败: %s", exc)
+        return {}
+    return {str(item.get("id")): item for item in points if item.get("id")}
+
+
 def _normalize_multiline_text(text: str) -> str:
     lines = [line.strip() for line in text.replace("\r", "\n").split("\n")]
     compact_lines = [line for line in lines if line]
     return "\n".join(compact_lines).strip()
+
+
+def _summary_from_content(text: str, limit: int = 180) -> str:
+    compact = re.sub(r"\s+", " ", text or "").strip()
+    if len(compact) <= limit:
+        return compact
+    return compact[: limit - 3].rstrip() + "..."
 
 
 def _extract_pdf_text(file_bytes: bytes) -> str:
@@ -155,6 +192,25 @@ def _build_import_doc(
         source=source,
         tags=_join_tags(tags),
         is_active=is_active,
+    )
+
+
+def _build_import_article(
+    *,
+    title: str,
+    category: str,
+    content: str,
+    tags: List[str],
+    cover_image: Optional[str] = None,
+) -> models.HealthArticle:
+    summary = _summary_from_content(content, 180) if content else ""
+    return models.HealthArticle(
+        title=title,
+        category=category,
+        summary=summary,
+        content=content,
+        cover_image=cover_image,
+        tags=_join_tags(tags),
     )
 
 
@@ -229,6 +285,20 @@ def _assert_category(category: str) -> None:
 def _assert_admin(user: models.User) -> None:
     if user.role != "admin":
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="仅管理员可操作")
+
+
+def _sync_rag_index_safely(db: Session, doc: models.RagKnowledgeDocument) -> None:
+    try:
+        sync_rag_document_index(db, doc)
+    except RagIndexError as exc:
+        logger.warning("RAG 向量索引同步失败 doc_id=%s: %s", doc.id, exc)
+
+
+def _delete_rag_index_safely(db: Session, doc_id: int) -> None:
+    try:
+        delete_rag_document_index(db, doc_id)
+    except RagIndexError as exc:
+        logger.warning("RAG 向量索引删除失败 doc_id=%s: %s", doc_id, exc)
 
 
 def _record_read_history(db: Session, user_id: int, article_id: int) -> None:
@@ -522,6 +592,80 @@ async def create_article(
     return _to_article_response(article, 0, 0, False)
 
 
+@router.post("/admin/articles/import", response_model=schemas.HealthArticleImportResponse)
+async def import_articles(
+    files: List[UploadFile] = File(...),
+    category: str = Form(...),
+    tags: Optional[str] = Form(None),
+    cover_image: Optional[str] = Form(None),
+    db: Session = Depends(get_db),
+    current_user: models.User = Depends(get_current_user),
+):
+    _assert_admin(current_user)
+    _assert_category(category)
+
+    if not files:
+        raise HTTPException(status_code=400, detail="请至少选择一个文件")
+
+    parsed_tags = _parse_tags(tags)
+    imported_articles: List[models.HealthArticle] = []
+    skipped_files: List[str] = []
+
+    for upload in files:
+        filename = upload.filename or "未命名文件"
+        file_bytes = await upload.read()
+
+        if not file_bytes:
+            skipped_files.append(f"{filename}（空文件）")
+            continue
+
+        try:
+            content = _extract_import_text(filename, file_bytes)
+        except HTTPException:
+            raise
+        except Exception as exc:
+            raise HTTPException(status_code=400, detail=f"文件 {filename} 解析失败：{exc}") from exc
+
+        if not content:
+            skipped_files.append(f"{filename}（未提取到有效文本）")
+            continue
+
+        title = Path(filename).stem.strip() or "导入文章"
+        existing = (
+            db.query(models.HealthArticle)
+            .filter(models.HealthArticle.title == title, models.HealthArticle.category == category)
+            .first()
+        )
+        if existing:
+            skipped_files.append(f"{filename}（标题重复）")
+            continue
+
+        imported_articles.append(
+            _build_import_article(
+                title=title,
+                category=category,
+                content=content,
+                tags=parsed_tags,
+                cover_image=cover_image,
+            )
+        )
+
+    if not imported_articles:
+        raise HTTPException(status_code=400, detail="没有可导入的有效文件")
+
+    db.add_all(imported_articles)
+    db.commit()
+    for article in imported_articles:
+        db.refresh(article)
+
+    return schemas.HealthArticleImportResponse(
+        items=[_to_article_response(article, 0, article.view_count, False) for article in imported_articles],
+        imported_count=len(imported_articles),
+        skipped_files=skipped_files,
+        message=f"成功导入 {len(imported_articles)} 篇文章",
+    )
+
+
 @router.put("/admin/articles/{article_id}", response_model=schemas.HealthArticleResponse)
 async def update_article(
     article_id: int,
@@ -603,13 +747,17 @@ async def list_rag_docs(
     if active_only:
         query = query.filter(models.RagKnowledgeDocument.is_active.is_(True))
 
-    total = query.count()
-    items = (
-        query.order_by(desc(models.RagKnowledgeDocument.updated_at))
-        .offset((page - 1) * page_size)
-        .limit(page_size)
-        .all()
+    matched_items = query.all()
+    matched_items.sort(
+        key=lambda item: (
+            0 if bool(item.is_active) else 1,
+            -(item.updated_at.timestamp() if item.updated_at else 0),
+        )
     )
+    total = len(matched_items)
+    start = (page - 1) * page_size
+    end = start + page_size
+    items = matched_items[start:end]
 
     return schemas.RagKnowledgeDocListResponse(
         items=[_to_rag_doc_response(item) for item in items],
@@ -637,7 +785,116 @@ async def create_rag_doc(
     db.add(doc)
     db.commit()
     db.refresh(doc)
+    _sync_rag_index_safely(db, doc)
     return _to_rag_doc_response(doc)
+
+
+@router.get("/admin/rag-docs/{doc_id}/chunks", response_model=schemas.RagKnowledgeDocChunkStatusListResponse)
+async def get_rag_doc_chunks(
+    doc_id: int,
+    include_vectors: bool = Query(False),
+    vector_preview_limit: int = Query(8, ge=0, le=32),
+    db: Session = Depends(get_db),
+    current_user: models.User = Depends(get_current_user),
+):
+    _assert_admin(current_user)
+
+    doc = db.query(models.RagKnowledgeDocument).filter(models.RagKnowledgeDocument.id == doc_id).first()
+    if not doc:
+        raise HTTPException(status_code=404, detail="知识库文档不存在")
+
+    chunks = (
+        db.query(models.RagKnowledgeChunk)
+        .filter(models.RagKnowledgeChunk.document_id == doc_id)
+        .order_by(models.RagKnowledgeChunk.chunk_index.asc())
+        .all()
+    )
+
+    point_map = _build_qdrant_point_map([chunk.point_id for chunk in chunks], with_vectors=include_vectors)
+    items: List[schemas.RagKnowledgeChunkStatusResponse] = []
+    indexed_chunks = 0
+
+    for chunk in chunks:
+        point = point_map.get(chunk.point_id) or {}
+        vector = _normalize_vector(point.get("vector"))
+        payload = point.get("payload") if isinstance(point.get("payload"), dict) else {}
+        payload_summary = dict(payload)
+        if isinstance(payload_summary.get("content"), str):
+            payload_summary["content"] = _content_preview(payload_summary["content"], 80)
+        vector_exists = bool(point)
+        if vector_exists:
+            indexed_chunks += 1
+
+        items.append(
+            schemas.RagKnowledgeChunkStatusResponse(
+                chunk_id=chunk.id,
+                document_id=chunk.document_id,
+                point_id=chunk.point_id,
+                chunk_index=chunk.chunk_index,
+                char_count=chunk.char_count,
+                is_active=chunk.is_active,
+                content_preview=_content_preview(chunk.content),
+                created_at=chunk.created_at,
+                updated_at=chunk.updated_at,
+                vector_exists=vector_exists,
+                vector_dimension=len(vector),
+                vector_preview=vector[:vector_preview_limit] if include_vectors and vector_preview_limit > 0 else [],
+                payload=payload_summary,
+            )
+        )
+
+    return schemas.RagKnowledgeDocChunkStatusListResponse(
+        document=_to_rag_doc_response(doc),
+        collection=settings.RAG_VECTOR_COLLECTION,
+        vector_enabled=settings.RAG_VECTOR_ENABLED,
+        total_chunks=len(chunks),
+        indexed_chunks=indexed_chunks,
+        missing_vectors=max(0, len(chunks) - indexed_chunks),
+        items=items,
+    )
+
+
+@router.get("/admin/rag-chunks/{chunk_id}/vector", response_model=schemas.RagKnowledgeChunkVectorResponse)
+async def get_rag_chunk_vector(
+    chunk_id: int,
+    vector_limit: Optional[int] = Query(None, ge=1, le=4096),
+    db: Session = Depends(get_db),
+    current_user: models.User = Depends(get_current_user),
+):
+    _assert_admin(current_user)
+
+    chunk = db.query(models.RagKnowledgeChunk).filter(models.RagKnowledgeChunk.id == chunk_id).first()
+    if not chunk:
+        raise HTTPException(status_code=404, detail="知识库分块不存在")
+
+    doc = db.query(models.RagKnowledgeDocument).filter(models.RagKnowledgeDocument.id == chunk.document_id).first()
+    if not doc:
+        raise HTTPException(status_code=404, detail="知识库文档不存在")
+
+    point_map = _build_qdrant_point_map([chunk.point_id], with_vectors=True)
+    point = point_map.get(chunk.point_id) or {}
+    vector = _normalize_vector(point.get("vector"))
+    payload = point.get("payload") if isinstance(point.get("payload"), dict) else {}
+    if vector_limit is not None:
+        vector = vector[:vector_limit]
+
+    return schemas.RagKnowledgeChunkVectorResponse(
+        chunk_id=chunk.id,
+        document_id=chunk.document_id,
+        document_title=doc.title,
+        point_id=chunk.point_id,
+        chunk_index=chunk.chunk_index,
+        char_count=chunk.char_count,
+        is_active=chunk.is_active,
+        content=chunk.content,
+        created_at=chunk.created_at,
+        updated_at=chunk.updated_at,
+        collection=settings.RAG_VECTOR_COLLECTION,
+        vector_exists=bool(point),
+        vector_dimension=len(_normalize_vector(point.get("vector"))),
+        vector=vector,
+        payload=payload,
+    )
 
 
 @router.post("/admin/rag-docs/import", response_model=schemas.RagKnowledgeImportResponse)
@@ -698,6 +955,7 @@ async def import_rag_docs(
     db.commit()
     for doc in imported_docs:
         db.refresh(doc)
+        _sync_rag_index_safely(db, doc)
 
     return schemas.RagKnowledgeImportResponse(
         items=[_to_rag_doc_response(doc) for doc in imported_docs],
@@ -744,6 +1002,7 @@ async def seed_default_rag_docs(
     db.commit()
     for doc in created_docs:
         db.refresh(doc)
+        _sync_rag_index_safely(db, doc)
 
     return schemas.RagKnowledgeImportResponse(
         items=[_to_rag_doc_response(doc) for doc in created_docs],
@@ -778,6 +1037,7 @@ async def update_rag_doc(
 
     db.commit()
     db.refresh(doc)
+    _sync_rag_index_safely(db, doc)
     return _to_rag_doc_response(doc)
 
 
@@ -792,6 +1052,7 @@ async def delete_rag_doc(
     if not doc:
         raise HTTPException(status_code=404, detail="知识库文档不存在")
 
+    _delete_rag_index_safely(db, doc.id)
     db.delete(doc)
     db.commit()
     return {"message": "知识库文档已删除"}

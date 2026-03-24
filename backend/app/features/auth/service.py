@@ -3,14 +3,23 @@ import hashlib
 from datetime import datetime, timedelta
 
 from cryptography.fernet import Fernet, InvalidToken
+from eth_account import Account
 from jose import JWTError, jwt
 from passlib.context import CryptContext
 from passlib.exc import UnknownHashError
 from sqlalchemy.orm import Session
-from eth_account import Account
 
 from app import models, schemas
 from app.config import settings
+from app.features.auth.privacy import (
+    apply_sensitive_user_fields,
+    hash_sensitive_value,
+    mask_email,
+    mask_wallet_address,
+    reveal_email,
+    reveal_social_open_id,
+    reveal_wallet_address,
+)
 from app.features.blockchain.encryption import normalize_private_key, private_key_hash
 
 
@@ -20,16 +29,25 @@ SUPPORTED_SOCIAL_PROVIDERS = {"wechat", "alipay"}
 
 
 class AuthService:
-    """认证服务：封装注册、登录、管理员校验等认证相关数据库操作。"""
-
     def __init__(self, db: Session):
-        """初始化服务并注入当前请求的数据库会话。"""
         self.db = db
 
     @staticmethod
     def _build_server_fernet() -> Fernet:
         digest = hashlib.sha256((settings.SECRET_KEY or "").encode("utf-8")).digest()
         return Fernet(base64.urlsafe_b64encode(digest))
+
+    @staticmethod
+    def email_hash(email: str | None) -> str | None:
+        return hash_sensitive_value(email, lower=True)
+
+    @staticmethod
+    def wallet_hash(wallet_address: str | None) -> str | None:
+        return hash_sensitive_value(wallet_address, lower=True)
+
+    @staticmethod
+    def social_open_id_hash(open_id: str | None) -> str | None:
+        return hash_sensitive_value(open_id, lower=True)
 
     @classmethod
     def encrypt_private_key_for_storage(cls, private_key: str) -> str:
@@ -42,13 +60,38 @@ class AuthService:
         except InvalidToken as exc:
             raise ValueError("私钥存储损坏，无法解密") from exc
 
+    def _get_user_by_email(self, email: str | None) -> models.User | None:
+        email_hash = self.email_hash(email)
+        if email_hash:
+            matched = self.db.query(models.User).filter(models.User.email_hash == email_hash).first()
+            if matched:
+                return matched
+        if email:
+            return self.db.query(models.User).filter(models.User.email == email).first()
+        return None
+
+    def _get_user_by_social_identity(self, provider: str, open_id: str) -> models.User | None:
+        open_id_hash = self.social_open_id_hash(open_id)
+        if open_id_hash:
+            matched = (
+                self.db.query(models.User)
+                .filter(models.User.social_provider == provider, models.User.social_open_id_hash == open_id_hash)
+                .first()
+            )
+            if matched:
+                return matched
+        return (
+            self.db.query(models.User)
+            .filter(models.User.social_provider == provider, models.User.social_open_id == open_id)
+            .first()
+        )
+
     async def register(self, user: schemas.UserCreate) -> tuple[models.User, str]:
-        """注册用户：支持普通用户与管理员（需管理员密钥）注册。"""
         existing_user = self.db.query(models.User).filter(models.User.username == user.username).first()
         if existing_user:
             raise ValueError("用户名已存在")
 
-        existing_email = self.db.query(models.User).filter(models.User.email == user.email).first()
+        existing_email = self._get_user_by_email(user.email)
         if existing_email:
             raise ValueError("邮箱已存在")
 
@@ -67,11 +110,7 @@ class AuthService:
         provider = self._normalize_social_provider(payload.provider)
         open_id, nickname = self._resolve_social_identity(provider, payload.auth_code, payload.nickname)
 
-        user = (
-            self.db.query(models.User)
-            .filter(models.User.social_provider == provider, models.User.social_open_id == open_id)
-            .first()
-        )
+        user = self._get_user_by_social_identity(provider, open_id)
         if user:
             return {
                 "need_profile_completion": False,
@@ -92,11 +131,7 @@ class AuthService:
     async def complete_social_profile(self, payload: schemas.SocialProfileCompleteRequest) -> tuple[models.User, str]:
         provider, open_id, nickname = self._parse_social_ticket(payload.social_ticket)
 
-        existing_bind = (
-            self.db.query(models.User)
-            .filter(models.User.social_provider == provider, models.User.social_open_id == open_id)
-            .first()
-        )
+        existing_bind = self._get_user_by_social_identity(provider, open_id)
         if existing_bind:
             raise ValueError("该第三方账号已绑定系统用户，请直接使用第三方登录")
 
@@ -124,7 +159,7 @@ class AuthService:
         if existing_user:
             raise ValueError("用户名已存在")
 
-        existing_email = self.db.query(models.User).filter(models.User.email == email).first()
+        existing_email = self._get_user_by_email(email)
         if existing_email:
             raise ValueError("邮箱已存在")
 
@@ -136,22 +171,27 @@ class AuthService:
 
         db_user = models.User(
             username=username,
-            email=email,
+            email="placeholder@private.local",
             password_hash=self.hash_password(password),
-            wallet_address=account.address,
+            wallet_address=None,
             private_key_hash=private_key_hash(generated_private_key),
             encrypted_private_key=self.encrypt_private_key_for_storage(generated_private_key),
             social_provider=social_provider,
-            social_open_id=social_open_id,
             social_nickname=social_nickname,
             role=role,
             role_id=role_ref.id,
             is_active=True,
         )
+        apply_sensitive_user_fields(
+            db_user,
+            email=email,
+            wallet_address=account.address,
+            social_open_id=social_open_id,
+        )
+
         self.db.add(db_user)
         self.db.commit()
         self.db.refresh(db_user)
-
         return db_user, generated_private_key
 
     @staticmethod
@@ -206,17 +246,14 @@ class AuthService:
             raise ValueError("第三方登录凭证已失效，请重新登录") from exc
 
     async def authenticate(self, username: str, password: str) -> models.User | None:
-        """用户名密码认证：成功返回用户对象，失败返回 None。"""
         user = self.db.query(models.User).filter(models.User.username == username).first()
         if not user:
             return None
         if not self.verify_password(password, user.password_hash):
             return None
-        
         return user
 
     async def authenticate_admin(self, username: str, password: str) -> models.User | None:
-        """管理员认证：在普通认证成功后，额外校验身份是否为 admin。"""
         user = await self.authenticate(username, password)
         user_role = user.role_ref.name if user and user.role_ref else user.role if user else None
         if not user or user_role not in {"admin", "super_admin"}:
@@ -224,8 +261,70 @@ class AuthService:
         return user
 
     async def get_user_by_username(self, username: str) -> models.User | None:
-        """按用户名查询用户，用于 token 反查当前登录人。"""
         return self.db.query(models.User).filter(models.User.username == username).first()
+
+    @staticmethod
+    def get_user_email(user: models.User) -> str | None:
+        return reveal_email(user)
+
+    @staticmethod
+    def get_user_wallet_address(user: models.User) -> str | None:
+        return reveal_wallet_address(user)
+
+    @staticmethod
+    def get_user_social_open_id(user: models.User) -> str | None:
+        return reveal_social_open_id(user)
+
+    @classmethod
+    def serialize_user_response(cls, user: models.User) -> dict:
+        return {
+            "id": user.id,
+            "username": user.username,
+            "email": mask_email(cls.get_user_email(user)),
+            "role": user.role,
+            "is_active": user.is_active,
+            "wallet_address": mask_wallet_address(cls.get_user_wallet_address(user)),
+            "created_at": user.created_at,
+        }
+
+    @classmethod
+    def serialize_admin_user_response(cls, user: models.User) -> dict:
+        return {
+            "id": user.id,
+            "username": user.username,
+            "email": mask_email(cls.get_user_email(user)),
+            "role": user.role,
+            "is_active": user.is_active,
+            "created_at": user.created_at,
+            "updated_at": user.updated_at,
+        }
+
+    @classmethod
+    def migrate_legacy_user_sensitive_fields(cls, user: models.User) -> bool:
+        changed = False
+
+        if user.email and not getattr(user, "email_hash", None):
+            apply_sensitive_user_fields(user, email=user.email)
+            changed = True
+
+        if user.wallet_address and not getattr(user, "wallet_address_hash", None):
+            apply_sensitive_user_fields(user, wallet_address=user.wallet_address)
+            changed = True
+
+        if user.social_open_id and not getattr(user, "social_open_id_hash", None):
+            apply_sensitive_user_fields(user, social_open_id=user.social_open_id)
+            changed = True
+
+        return changed
+
+    @classmethod
+    def migrate_all_users_sensitive_fields(cls, db: Session) -> None:
+        changed = False
+        for user in db.query(models.User).all():
+            if cls.migrate_legacy_user_sensitive_fields(user):
+                changed = True
+        if changed:
+            db.commit()
 
     def reveal_private_key(self, user: models.User, password: str) -> str:
         if not self.verify_password(password, user.password_hash):
@@ -237,7 +336,6 @@ class AuthService:
         return self.decrypt_private_key_from_storage(user.encrypted_private_key)
 
     def _get_or_create_role(self, role_name: str, description: str) -> models.Role:
-        """获取或创建身份记录（roles 表），避免注册时缺少 role。"""
         role_ref = self.db.query(models.Role).filter(models.Role.name == role_name).first()
         if role_ref:
             return role_ref
@@ -249,12 +347,10 @@ class AuthService:
 
     @staticmethod
     def hash_password(password: str) -> str:
-        """对明文密码做哈希存储，避免数据库保存明文密码。"""
         return pwd_context.hash(password)
 
     @staticmethod
     def verify_password(plain_password: str, hashed_password: str) -> bool:
-        """校验用户输入密码与数据库哈希是否匹配。"""
         if not hashed_password:
             return False
         try:
@@ -264,7 +360,6 @@ class AuthService:
 
 
 def ensure_admin_user(db: Session) -> None:
-    """系统启动时同步基础身份与种子账号，便于开箱即用。"""
     role_definitions = {
         "admin": "系统管理员",
         "user": "普通用户",
@@ -305,22 +400,23 @@ def ensure_admin_user(db: Session) -> None:
         if existing_user:
             existing_user.role = user_item["role"]
             existing_user.role_id = role_map[user_item["role"]].id
-            existing_user.email = user_item["email"]
             existing_user.is_active = True
+            apply_sensitive_user_fields(existing_user, email=user_item["email"])
 
             if not AuthService.verify_password(user_item["password"], existing_user.password_hash):
                 existing_user.password_hash = AuthService.hash_password(user_item["password"])
             continue
 
-        db.add(
-            models.User(
-                username=user_item["username"],
-                email=user_item["email"],
-                password_hash=AuthService.hash_password(user_item["password"]),
-                role=user_item["role"],
-                role_id=role_map[user_item["role"]].id,
-                is_active=True,
-            )
+        db_user = models.User(
+            username=user_item["username"],
+            email="placeholder@private.local",
+            password_hash=AuthService.hash_password(user_item["password"]),
+            role=user_item["role"],
+            role_id=role_map[user_item["role"]].id,
+            is_active=True,
         )
+        apply_sensitive_user_fields(db_user, email=user_item["email"])
+        db.add(db_user)
 
     db.commit()
+    AuthService.migrate_all_users_sensitive_fields(db)

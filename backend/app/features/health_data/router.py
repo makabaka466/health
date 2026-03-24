@@ -10,6 +10,7 @@ from sqlalchemy.orm import Session
 from app.config import settings
 from app.database import get_db
 from app import models, schemas
+from app.features.ai.service import invalidate_user_home_advice
 from app.features.auth.dependencies import get_current_user
 from app.features.auth.service import AuthService
 from app.features.blockchain.service import chain_service
@@ -24,6 +25,11 @@ from app.features.blockchain.encryption import (
 
 
 router = APIRouter()
+
+
+def _invalidate_home_advice_if_needed(db: Session, user: models.User, should_refresh: bool) -> None:
+    if should_refresh:
+        invalidate_user_home_advice(db, user)
 
 
 def _decode_pdf_data(pdf_data_base64: Optional[str]) -> tuple[Optional[bytes], Optional[int], Optional[str]]:
@@ -66,8 +72,9 @@ def _extract_metrics(content: Optional[str]) -> dict:
 
 
 def _resolve_effective_private_key(user: models.User, private_key: Optional[str]) -> tuple[Optional[str], Optional[str]]:
+    real_wallet_address = AuthService.get_user_wallet_address(user)
     if private_key:
-        if not verify_user_private_key(private_key, user.wallet_address, user.private_key_hash):
+        if not verify_user_private_key(private_key, real_wallet_address, user.private_key_hash):
             raise HTTPException(status_code=403, detail="私钥校验失败")
         normalized_key = normalize_private_key(private_key)
         return normalized_key, normalized_key
@@ -82,7 +89,8 @@ def _resolve_effective_private_key(user: models.User, private_key: Optional[str]
 def _validate_explicit_private_key(user: models.User, private_key: Optional[str]) -> Optional[str]:
     if not private_key:
         return None
-    if not verify_user_private_key(private_key, user.wallet_address, user.private_key_hash):
+    real_wallet_address = AuthService.get_user_wallet_address(user)
+    if not verify_user_private_key(private_key, real_wallet_address, user.private_key_hash):
         raise HTTPException(status_code=403, detail="绉侀挜鏍￠獙澶辫触")
     return normalize_private_key(private_key)
 
@@ -228,9 +236,10 @@ async def create_health_record(
     file_type = "pdf" if health_data.file_type == "pdf" else "text"
     pdf_data, pdf_size, _ = _decode_pdf_data(health_data.pdf_data_base64 if file_type == "pdf" else None)
     is_public = bool(health_data.is_public)
+    effective_private_key, _ = _resolve_effective_private_key(current_user, health_data.private_key)
     explicit_private_key = _validate_explicit_private_key(current_user, health_data.private_key)
-    if not is_public and not explicit_private_key:
-        raise HTTPException(status_code=400, detail="私密健康数据必须提供 private_key")
+    if not is_public and not effective_private_key:
+        raise HTTPException(status_code=400, detail="当前账号缺少可用私钥，无法保存私密健康数据")
 
     if file_type == "pdf" and not pdf_data:
         raise HTTPException(status_code=400, detail="请上传 PDF 文件")
@@ -247,14 +256,14 @@ async def create_health_record(
     if file_type == "text":
         if is_public:
             encrypted_data_content = encrypt_text(health_data.data_content or "", public_storage_key)
-        elif explicit_private_key:
-            encrypted_data_content = encrypt_text(health_data.data_content or "", explicit_private_key)
+        elif effective_private_key:
+            encrypted_data_content = encrypt_text(health_data.data_content or "", effective_private_key)
 
     if file_type == "pdf" and pdf_data:
         if is_public:
             encrypted_pdf_data = encrypt_binary(pdf_data, public_storage_key)
-        elif explicit_private_key:
-            encrypted_pdf_data = encrypt_binary(pdf_data, explicit_private_key)
+        elif effective_private_key:
+            encrypted_pdf_data = encrypt_binary(pdf_data, effective_private_key)
 
     db_record = models.HealthData(
         user_id=current_user.id,
@@ -287,8 +296,9 @@ async def create_health_record(
     db.add(db_record)
     db.commit()
     db.refresh(db_record)
+    _invalidate_home_advice_if_needed(db, current_user, db_record.is_public)
 
-    return _serialize_record(db_record, explicit_private_key, current_user)
+    return _serialize_record(db_record, effective_private_key, current_user)
 
 
 @router.get("/records", response_model=List[schemas.HealthDataResponse])
@@ -350,9 +360,10 @@ async def update_health_record(
     if not record:
         raise HTTPException(status_code=404, detail="健康数据记录不存在")
 
+    was_public = bool(record.is_public)
     update_data = health_data.model_dump(exclude_unset=True)
     input_private_key = update_data.pop("private_key", None)
-    private_key, _ = _resolve_effective_private_key(current_user, input_private_key)
+    effective_private_key, _ = _resolve_effective_private_key(current_user, input_private_key)
     explicit_private_key = _validate_explicit_private_key(current_user, input_private_key)
     public_storage_key = _public_storage_key()
     chain_private_key = _resolve_chain_private_key(current_user, explicit_private_key)
@@ -366,8 +377,8 @@ async def update_health_record(
     target_file_type = "pdf" if update_data.get("file_type", record.file_type) == "pdf" else "text"
     record.file_type = target_file_type
 
-    if not record.is_public and not explicit_private_key:
-        raise HTTPException(status_code=400, detail="更新私密健康数据需要提供 private_key")
+    if not record.is_public and not effective_private_key:
+        raise HTTPException(status_code=400, detail="当前账号缺少可用私钥，无法更新私密健康数据")
 
     if target_file_type == "text" and "data_content" in update_data:
         record.data_content = None
@@ -377,7 +388,7 @@ async def update_health_record(
         if record.is_public:
             record.encrypted_data_content = encrypt_text(update_data["data_content"] or "", public_storage_key)
         else:
-            record.encrypted_data_content = encrypt_text(update_data["data_content"] or "", explicit_private_key)
+            record.encrypted_data_content = encrypt_text(update_data["data_content"] or "", effective_private_key)
 
     if target_file_type == "pdf" and "pdf_data_base64" in update_data:
         decoded_pdf, decoded_size, _ = _decode_pdf_data(update_data["pdf_data_base64"])
@@ -391,9 +402,9 @@ async def update_health_record(
         if record.is_public:
             record.encrypted_pdf_data = encrypt_binary(decoded_pdf, public_storage_key)
         else:
-            record.encrypted_pdf_data = encrypt_binary(decoded_pdf, explicit_private_key)
+            record.encrypted_pdf_data = encrypt_binary(decoded_pdf, effective_private_key)
 
-    resolved_content, resolved_pdf_bytes, _ = _resolve_record_values(record, explicit_private_key)
+    resolved_content, resolved_pdf_bytes, _ = _resolve_record_values(record, effective_private_key)
     source_payload = _build_source_payload(target_file_type, data_content=resolved_content, pdf_bytes=resolved_pdf_bytes)
     data_hash_hex = _hash_payload(source_payload)
     if chain_private_key and source_payload and data_hash_hex:
@@ -420,7 +431,8 @@ async def update_health_record(
 
     db.commit()
     db.refresh(record)
-    return _serialize_record(record, private_key, current_user)
+    _invalidate_home_advice_if_needed(db, current_user, was_public or record.is_public)
+    return _serialize_record(record, effective_private_key, current_user)
 
 
 @router.get("/public/records", response_model=List[schemas.HealthDataResponse])
@@ -465,9 +477,11 @@ async def delete_health_record(
     
     if not record:
         raise HTTPException(status_code=404, detail="健康数据记录不存在")
-    
+
+    was_public = bool(record.is_public)
     db.delete(record)
     db.commit()
+    _invalidate_home_advice_if_needed(db, current_user, was_public)
     return {"message": "健康数据记录已删除"}
 
 

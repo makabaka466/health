@@ -1,20 +1,26 @@
-<template>
+﻿<template>
   <div class="admin-articles-container">
     <div class="page-header">
       <div>
         <h1>文章管理</h1>
-        <p>创建、编辑和删除健康科普文章</p>
+        <p>创建、编辑、删除健康科普文章，并支持从 PDF / Word 批量导入。</p>
       </div>
-      <el-button type="primary" @click="openCreateDialog">
-        <el-icon><Plus /></el-icon>
-        新建文章
-      </el-button>
+      <div class="header-actions">
+        <el-button type="warning" @click="openImportDialog">
+          <el-icon><UploadFilled /></el-icon>
+          导入 PDF / Word
+        </el-button>
+        <el-button type="primary" @click="openCreateDialog">
+          <el-icon><Plus /></el-icon>
+          新建文章
+        </el-button>
+      </div>
     </div>
 
     <el-card shadow="hover" class="filter-card">
       <el-row :gutter="12">
         <el-col :span="8">
-          <el-input v-model="filters.keyword" placeholder="按标题/摘要搜索" clearable @keyup.enter="loadArticles" />
+          <el-input v-model="filters.keyword" placeholder="按标题、摘要搜索" clearable @keyup.enter="loadArticles" />
         </el-col>
         <el-col :span="6">
           <el-select v-model="filters.category" placeholder="分类" clearable style="width: 100%">
@@ -40,7 +46,7 @@
         <el-table-column prop="category" label="分类" width="130" />
         <el-table-column label="标签" min-width="180">
           <template #default="{ row }">
-            <el-tag v-for="tag in row.tags" :key="tag" size="small" class="tag-item">{{ tag }}</el-tag>
+            <el-tag v-for="tag in row.tags || []" :key="tag" size="small" class="tag-item">{{ tag }}</el-tag>
           </template>
         </el-table-column>
         <el-table-column prop="view_count" label="浏览" width="90" />
@@ -88,7 +94,7 @@
           <el-input v-model="editor.summary" type="textarea" :rows="2" maxlength="500" show-word-limit />
         </el-form-item>
 
-        <el-form-item label="封面图URL">
+        <el-form-item label="封面图 URL">
           <el-input v-model="editor.cover_image" placeholder="https://..." />
         </el-form-item>
 
@@ -106,18 +112,68 @@
         <el-button type="primary" :loading="saving" @click="saveArticle">保存</el-button>
       </template>
     </el-dialog>
+
+    <el-dialog v-model="importVisible" title="导入 PDF / Word 文章" width="720px">
+      <el-form :model="importForm" label-position="top">
+        <el-row :gutter="12">
+          <el-col :span="12">
+            <el-form-item label="分类">
+              <el-select v-model="importForm.category" style="width: 100%" placeholder="请选择分类">
+                <el-option v-for="item in categories" :key="item" :label="item" :value="item" />
+              </el-select>
+            </el-form-item>
+          </el-col>
+          <el-col :span="12">
+            <el-form-item label="封面图 URL">
+              <el-input v-model="importForm.cover_image" placeholder="可选，导入的文章共用此封面" />
+            </el-form-item>
+          </el-col>
+        </el-row>
+
+        <el-form-item label="标签（英文逗号分隔）">
+          <el-input v-model="importForm.tagsText" placeholder="例如：营养,慢病,睡眠" />
+        </el-form-item>
+
+        <el-form-item label="选择文件">
+          <el-upload
+            ref="uploadRef"
+            drag
+            multiple
+            :auto-upload="false"
+            :limit="10"
+            accept=".pdf,.docx"
+            :on-change="handleUploadChange"
+            :on-remove="handleUploadRemove"
+            :file-list="importFiles"
+          >
+            <el-icon class="el-icon--upload"><UploadFilled /></el-icon>
+            <div class="el-upload__text">将 PDF 或 DOCX 拖到此处，或点击选择文件</div>
+            <template #tip>
+              <div class="el-upload__tip">支持 PDF(.pdf) 和 Word(.docx)，单次最多 10 个文件</div>
+            </template>
+          </el-upload>
+        </el-form-item>
+      </el-form>
+
+      <template #footer>
+        <el-button @click="closeImportDialog">取消</el-button>
+        <el-button type="primary" :loading="importing" @click="submitImport">开始导入</el-button>
+      </template>
+    </el-dialog>
   </div>
 </template>
 
 <script setup>
 import { reactive, ref, onMounted } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
+import { Plus, UploadFilled } from '@element-plus/icons-vue'
 import { knowledgeApi } from '../api/knowledge'
 
 const categories = ['慢性病管理', '饮食营养', '心理健康', '运动健身', '老年健康', '儿童健康']
 
 const loading = ref(false)
 const saving = ref(false)
+const importing = ref(false)
 const page = ref(1)
 const pageSize = ref(10)
 const total = ref(0)
@@ -133,11 +189,21 @@ const editorVisible = ref(false)
 const isEditing = ref(false)
 const editingId = ref(null)
 const editorRef = ref()
+const importVisible = ref(false)
+const uploadRef = ref()
+const importFiles = ref([])
+
 const editor = reactive({
   title: '',
   category: '',
   summary: '',
   content: '',
+  cover_image: '',
+  tagsText: ''
+})
+
+const importForm = reactive({
+  category: '',
   cover_image: '',
   tagsText: ''
 })
@@ -149,7 +215,7 @@ const rules = {
   content: [{ required: true, message: '请输入正文', trigger: 'blur' }]
 }
 
-const parseTags = (text) =>
+const parseTags = (text = '') =>
   text
     .split(',')
     .map((item) => item.trim())
@@ -184,10 +250,27 @@ const resetEditor = () => {
   editingId.value = null
 }
 
+const resetImportForm = () => {
+  importForm.category = ''
+  importForm.cover_image = ''
+  importForm.tagsText = ''
+  importFiles.value = []
+}
+
 const openCreateDialog = () => {
   isEditing.value = false
   resetEditor()
   editorVisible.value = true
+}
+
+const openImportDialog = () => {
+  resetImportForm()
+  importVisible.value = true
+}
+
+const closeImportDialog = () => {
+  importVisible.value = false
+  resetImportForm()
 }
 
 const openEditDialog = (row) => {
@@ -249,6 +332,48 @@ const handleDelete = async (row) => {
   }
 }
 
+const handleUploadChange = (_file, fileList) => {
+  importFiles.value = fileList
+}
+
+const handleUploadRemove = (_file, fileList) => {
+  importFiles.value = fileList
+}
+
+const submitImport = async () => {
+  if (!importForm.category) {
+    ElMessage.warning('请先选择分类')
+    return
+  }
+  if (!importFiles.value.length) {
+    ElMessage.warning('请至少选择一个文件')
+    return
+  }
+
+  const formData = new FormData()
+  importFiles.value.forEach((fileItem) => {
+    formData.append('files', fileItem.raw)
+  })
+  formData.append('category', importForm.category)
+  formData.append('tags', importForm.tagsText || '')
+  formData.append('cover_image', importForm.cover_image || '')
+
+  importing.value = true
+  try {
+    const result = await knowledgeApi.importArticles(formData)
+    ElMessage.success(result.message || `成功导入 ${result.imported_count || 0} 篇文章`)
+    if (result.skipped_files?.length) {
+      ElMessage.warning(`以下文件未导入：${result.skipped_files.join('、')}`)
+    }
+    closeImportDialog()
+    await loadArticles()
+  } catch (error) {
+    ElMessage.error(error?.response?.data?.detail || '导入失败')
+  } finally {
+    importing.value = false
+  }
+}
+
 const formatDateTime = (value) => {
   if (!value) return '-'
   return new Date(value).toLocaleString('zh-CN', { hour12: false })
@@ -278,6 +403,11 @@ onMounted(loadArticles)
 .page-header p {
   margin: 6px 0 0;
   color: #64748b;
+}
+
+.header-actions {
+  display: flex;
+  gap: 12px;
 }
 
 .filter-card {

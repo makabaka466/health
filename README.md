@@ -1,19 +1,18 @@
-# 健康管理系统
+﻿# 健康管理系统
 
-基于 **Vue 3 + FastAPI + MySQL + Web3** 的健康管理平台，支持健康数据管理、AI 辅助分析、健康文章管理，以及基于私钥的隐私访问控制（公开/私密）。
+基于 **Vue 3 + FastAPI + MySQL + Ollama + Qdrant** 的健康管理平台，支持用户健康档案管理、健康知识库、AI 问答、私密数据解密、以及基于本地大模型的向量检索增强问答（RAG）。
 
----
+## 当前已实现的核心能力
 
-## 核心能力
-
-- 🔐 用户注册时自动生成钱包地址与一次性私钥（仅返回一次）
-- 🔑 支持微信/支付宝第三方登录（首次登录补全资料，后续可一键登录）
-- 🧾 个人资料支持公开/私密模式
-- 📊 健康数据支持文本/PDF，支持公开/私密存储
-- � AI 助手支持对话与健康建议
-- 📚 健康文章支持后台管理、收藏与阅读历史
-- ⛓️ 健康数据可选上链（Ganache / EVM）
-- �️ 管理后台支持系统设置与系统日志
+- 用户注册、登录、鉴权
+- 健康数据管理：文本 / PDF 上传、公开 / 私密存储
+- 健康知识文章管理与阅读历史、收藏
+- AI 助手问答：支持非流式与流式输出
+- 用户公开健康数据注入 AI 上下文
+- 用户主动选择私密数据参与本次问答
+- 本地 Ollama 模型推理
+- Qdrant 向量检索增强问答（RAG）
+- 管理端知识库维护：手动新增、编辑、删除、批量导入 PDF / DOCX
 
 ---
 
@@ -23,229 +22,344 @@
 - FastAPI
 - SQLAlchemy
 - MySQL
+- PyMySQL
 - Pydantic
-- JWT
+- python-jose / JWT
 - Web3.py
-- cryptography (Fernet)
+- pypdf
+- python-docx
+- qdrant-client
 
 ### 前端
 - Vue 3
+- Vite
 - Element Plus
 - Vue Router
 - Axios
-- Web3.js
 
-### 链上
-- Solidity 合约（`HealthDataAccess.sol` / `UserAuth.sol`）
-- Ganache（默认 `http://127.0.0.1:7545`）
+### AI / RAG
+- Ollama
+  - 生成模型：`deepseek-r1:8b`
+  - 向量模型：`nomic-embed-text`
+- Qdrant
+- 本地分块与向量化索引
 
 ---
 
-## 按功能域分类后的项目结构
+## 项目结构
 
 ```text
 健康管理系统/
 ├─ backend/
 │  ├─ app/
-│  │  ├─ main.py
 │  │  ├─ config.py
 │  │  ├─ database.py
+│  │  ├─ main.py
 │  │  ├─ models.py
 │  │  ├─ schemas.py
-│  │  ├─ features/
-│  │  │  ├─ auth/            # 登录注册、鉴权依赖、个人资料
-│  │  │  ├─ health_data/     # 健康数据 CRUD、公开/私密、分析
-│  │  │  ├─ knowledge/       # 健康文章与阅读行为
-│  │  │  ├─ ai/              # AI 对话与建议
-│  │  │  ├─ blockchain/      # 区块链交互与加解密
-│  │  │  └─ admin/           # 系统设置与系统日志
-│  │  ├─ routers/            # 预留（当前已迁移到 features）
-│  │  └─ services/           # 预留（当前已迁移到 features）
-│  ├─ seed_health.sql        # 一键初始化数据库结构与种子数据
-│  └─ requirements.txt
+│  │  └─ features/
+│  │     ├─ admin/
+│  │     ├─ ai/
+│  │     ├─ auth/
+│  │     ├─ blockchain/
+│  │     ├─ health_data/
+│  │     ├─ knowledge/
+│  │     └─ rag/
+│  ├─ scripts/
+│  │  └─ rebuild_rag_index.py
+│  ├─ requirements.txt
+│  └─ seed_health.sql
 ├─ frontend/
-│  ├─ src/
-│  │  ├─ views/
-│  │  │  └─ admin/           # 管理端页面（系统设置/日志等）
-│  │  ├─ api/
-│  │  │  ├─ core/http.js     # 统一 HTTP 客户端
-│  │  │  └─ modules/         # 按功能 API 模块拆分
-│  │  └─ router/
-└─ contracts/
+├─ docs/
+├─ contracts/
+└─ README.md
 ```
 
 ---
 
-## 快速启动
+## 本地开发启动
 
-## 1) 初始化数据库（推荐）
+## 1. 准备 MySQL
 
-```bash
+默认配置见 `backend/app/config.py`：
+
+- `DB_HOST=127.0.0.1`
+- `DB_PORT=3306`
+- `DB_USER=root`
+- `DB_PASSWORD=123456`
+- `DB_NAME=health`
+
+如需初始化数据库，可执行：
+
+```powershell
 mysql -u root -p < backend/seed_health.sql
 ```
 
-> `seed_health.sql` 为重建型脚本，执行会清空并重建表结构。
+> `seed_health.sql` 会重建部分表结构，执行前请确认是否需要备份数据。
 
-## 2) 启动后端
+## 2. 准备 Python 虚拟环境并安装后端依赖
 
-```bash
-cd backend
-python -m venv venv
-venv\Scripts\activate   # Windows
-pip install -r requirements.txt
-uvicorn app.main:app --reload --host 0.0.0.0 --port 8000
+```powershell
+python -m venv .venv
+.\.venv\Scripts\activate
+pip install -r backend\requirements.txt
 ```
 
-## 3) 启动前端
+## 3. 启动 Qdrant
 
-```bash
+```powershell
+docker run -d --name health-qdrant -p 6333:6333 ghcr.io/qdrant/qdrant/qdrant:v1.16.3
+```
+
+如容器已经存在，可直接启动：
+
+```powershell
+docker start health-qdrant
+```
+
+Qdrant 默认地址：
+
+- `http://127.0.0.1:6333`
+
+## 4. 准备 Ollama 模型
+
+确认本地已经拉取：
+
+```powershell
+ollama list
+```
+
+建议至少包含：
+
+- `deepseek-r1:8b`
+- `nomic-embed-text`
+
+若未安装，可执行：
+
+```powershell
+ollama run deepseek-r1:8b
+ollama run nomic-embed-text
+```
+
+## 5. 启动后端
+
+```powershell
+cd backend
+..\.venv\Scripts\python.exe -m uvicorn app.main:app --host 127.0.0.1 --port 8000
+```
+
+接口文档：
+
+- Swagger：`http://127.0.0.1:8000/docs`
+- ReDoc：`http://127.0.0.1:8000/redoc`
+
+## 6. 启动前端
+
+```powershell
 cd frontend
 npm install
 npm run dev
 ```
 
-前端默认访问：`http://localhost:3000`
+默认访问地址：
+
+- `http://127.0.0.1:3000`
 
 ---
 
-## 环境变量（后端）
+## AI 与向量 RAG 说明
 
-可通过环境变量覆盖 `backend/app/config.py` 默认值：
+当前项目中的 AI 问答已经接入本地 Ollama，并升级为向量检索版 RAG。
 
-- `DB_HOST` / `DB_PORT` / `DB_USER` / `DB_PASSWORD` / `DB_NAME`
-- `SECRET_KEY`
-- `ADMIN_USERNAME` / `ADMIN_EMAIL` / `ADMIN_PASSWORD` / `ADMIN_REGISTER_KEY`
-- `WEB3_PROVIDER_URI`（默认 `http://127.0.0.1:7545`）
+### 当前实际方案
+
+- **仅 `rag_knowledge_documents` 做向量化**
+- **`health_articles` 暂时不进入向量库**
+- 向量由本地 Ollama `nomic-embed-text` 生成
+- 向量库存储在 Qdrant 集合：`health_rag_documents`
+- 文档原文存储在 MySQL：`rag_knowledge_documents`
+- 文档分块元数据存储在 MySQL：`rag_knowledge_chunks`
+
+### 索引构建流程
+
+1. 管理端录入或导入知识文档
+2. 后端按配置进行文本分块
+3. 调用 Ollama embedding 接口生成向量
+4. 写入 Qdrant
+5. 同时把 chunk 元数据写入 `rag_knowledge_chunks`
+6. AI 问答时先检索向量，再把命中内容拼入 prompt
+
+### 重建 RAG 索引
+
+当你批量导入、修改大量知识文档，或者想全量重建向量索引时，可以执行：
+
+```powershell
+.\.venv\Scripts\python.exe backend\scripts\rebuild_rag_index.py
+```
+
+---
+
+## 关键配置项
+
+以下配置位于 `backend/app/config.py`，也可以通过环境变量覆盖：
+
+### 数据库
+- `DB_HOST`
+- `DB_PORT`
+- `DB_USER`
+- `DB_PASSWORD`
+- `DB_NAME`
+- `DATABASE_URL`
+
+### 管理员账号
+- `ADMIN_USERNAME`
+- `ADMIN_EMAIL`
+- `ADMIN_PASSWORD`
+- `ADMIN_REGISTER_KEY`
+
+### Ollama
+- `OLLAMA_BASE_URL`
+- `OLLAMA_MODEL`
+- `OLLAMA_TIMEOUT_SECONDS`
+- `OLLAMA_TEMPERATURE`
+- `OLLAMA_TOP_P`
+- `OLLAMA_TOP_K`
+- `OLLAMA_REPEAT_PENALTY`
+- `OLLAMA_NUM_PREDICT`
+- `OLLAMA_EMBEDDING_MODEL`
+- `OLLAMA_EMBEDDING_TIMEOUT_SECONDS`
+
+### RAG
+- `AI_RAG_LIMIT`（当前默认 `3`）
+- `AI_CHAT_HISTORY_LIMIT`
+- `RAG_VECTOR_ENABLED`
+- `RAG_VECTOR_COLLECTION`
+- `RAG_VECTOR_BASE_URL`
+- `RAG_VECTOR_TIMEOUT_SECONDS`
+- `RAG_VECTOR_TOP_K`
+- `RAG_VECTOR_SCORE_THRESHOLD`
+- `RAG_CHUNK_SIZE`
+- `RAG_CHUNK_OVERLAP`
+
+### 区块链
+- `WEB3_PROVIDER_URI`
 - `HEALTH_DATA_CONTRACT_ADDRESS`
 - `HEALTH_DATA_CONTRACT_ABI_JSON`
 
 ---
 
-## 区块链与隐私说明
+## RAG 知识库如何录入数据
 
-1. 用户注册成功后返回一次性 `generated_private_key`。  
-2. 数据库只保存 `private_key_hash`，不保存明文私钥。  
-3. 私密数据（个人资料、私密健康记录）需提供私钥才可解密查看。  
-4. 公开数据可直接访问（公开接口或公开资料接口）。  
-5. 若配置了合约地址和 ABI，健康数据会触发可选上链写入（保存交易哈希）。
+当前已经提供完整的后台录入能力，推荐优先使用管理端页面或管理接口，而不是直接手改数据库。
 
+### 方式一：管理端手动新增
 
-[用户填写健康数据/上传PDF]
-            |
-            v
-[前端调用 /api/health/records]
-            |
-            v
-[后端校验 JWT，识别当前用户]
-            |
-            v
-[判断 is_public 是否为公开]
-      /                    \
-     /是                     \否
-    v                        v
-[明文保存]             [校验 private_key]
-    |                        |
-    |                        v
-    |                 [用私钥派生 Fernet 密钥]
-    |                        |
-    |                        v
-    |                 [文本/PDF 加密]
-    |                        |
-    \________________________/
-             |
-             v
-      [写入 MySQL 数据库]
-             |
-             v
-[如果本次显式传了 private_key 且链服务已启用]
-             |
-             v
-[计算原始内容 SHA-256]
-             |
-             v
-[调用智能合约 storeHealthData]
-             |
-             v
-[返回 tx_hash，写入数据库 onchain_tx_hash]
-             |
-             v
-         [上传完成]
+适合：整理好的短篇知识、制度说明、健康建议、FAQ。
 
+可通过管理端知识库页面新增文档，填写：
 
-================ 查看阶段 ================
+- 标题
+- 分类
+- 来源
+- 标签
+- 正文内容
+- 是否启用
 
-[用户查看健康数据]
-            |
-            v
-[前端调用 /api/health/records 或 /records/{id}]
-            |
-            v
-[后端读取数据库记录]
-            |
-            v
-[判断该记录是否私密且是否有密文字段]
-      /                    \
-     /否                     \是
-    v                        v
-[直接返回明文]         [尝试解密]
-                              |
-              ┌───────────────┴───────────────┐
-              |                               |
-              v                               v
-      [解密成功，返回真实内容]      [解密失败，返回 requires_private_key=true]
-                                              |
-                                              v
-                                 [前端提示用户输入原始私钥]
-                                              |
-                                              v
-                                   [重新请求并带 private_key]
-                                              |
-                                              v
-                                        [解密后查看]
+对应接口：
+
+- `GET /api/knowledge/admin/rag-docs`
+- `POST /api/knowledge/admin/rag-docs`
+- `PUT /api/knowledge/admin/rag-docs/{doc_id}`
+- `DELETE /api/knowledge/admin/rag-docs/{doc_id}`
+
+### 方式二：导入 PDF / DOCX
+
+适合：指南、科普手册、机构规范、讲义、医院宣教材料。
+
+对应接口：
+
+- `POST /api/knowledge/admin/rag-docs/import`
+
+说明：
+
+- 支持 `.pdf`、`.docx`
+- 导入后会提取文本并写入 `rag_knowledge_documents`
+- 同时自动同步向量索引
+
+### 方式三：导入示例知识
+
+适合本地联调或演示：
+
+- `POST /api/knowledge/admin/rag-docs/seed-defaults`
 
 ---
 
-## 默认种子账号
+## 推荐的数据采集与入库流程
 
-由后端启动初始化自动确保存在：
+如果你要持续扩充 RAG 知识库，建议按下面流程做：
 
-- 管理员：`admin / admin123`
-- 普通用户：`xiaoming / 123456`
-- 普通用户：`xiaohong / 123456`
-
-管理员注册密钥默认：`123`
-
----
-
-## API 文档
-
-- Swagger: `http://localhost:8000/docs`
-- ReDoc: `http://localhost:8000/redoc`
-
-### 第三方登录相关接口
-
-- `POST /api/auth/social/login-init`
-  - 入参：`provider`（wechat/alipay）、`auth_code`（第三方授权码，当前项目可使用模拟码）
-  - 出参：
-    - 已绑定账号：直接返回登录 token
-    - 未绑定账号：返回 `social_ticket`，用于下一步补全资料
-
-- `POST /api/auth/social/complete`
-  - 入参：`social_ticket` + `username` + `email` + `password`
-  - 出参：登录 token
-
-> 说明：当前仓库默认接入为“可跑通的模拟授权码模式”，便于本地联调；生产环境请替换为微信/支付宝官方 OAuth 授权码。
+1. **先选可信来源**
+   - 国家卫健委、疾控机构、医院官方宣教、临床指南、药品说明书、营养学权威资料
+2. **先做筛选和清洗**
+   - 去掉广告、版权页、目录、重复页、无关脚注
+3. **按主题拆分**
+   - 一个文档尽量只讲一个主题，例如：高血压、糖尿病饮食、睡眠管理
+4. **补齐元数据**
+   - 标题、分类、来源、标签、更新时间
+5. **优先导入结构清晰的内容**
+   - 段落清楚、语句完整、内容不要太短也不要特别杂
+6. **导入后做抽样问答测试**
+   - 用真实问题验证召回是否准确，例如“高血压怎么居家监测”
+7. **定期更新旧文档**
+   - 医疗健康内容具有时效性，过期内容建议停用或替换
 
 ---
 
-## 说明
+## 默认说明
 
-该项目面向教学与原型验证。生产使用前请补充：
+- 系统启动时会自动尝试建表和补充部分缺失字段
+- 默认管理员账号以 `backend/app/config.py` 中配置为准
+- 区块链能力属于可选能力，不影响 AI / RAG 主流程运行
 
-- 完整迁移体系（Alembic）
-- 密钥托管与轮换机制
-- 更细粒度审计与告警
-- 安全压测与备份策略
+---
 
+## 相关文档
 
+- `docs/ollama-ai-chat-integration.md`：本地大模型、AI 问答与 RAG 改造说明
 
+---
+
+## 常用排查
+
+### 1. AI 没回答或回答为空
+检查：
+
+- Ollama 是否启动
+- `deepseek-r1:8b` 是否已安装
+- `OLLAMA_NUM_PREDICT` 是否过低
+
+### 2. RAG 检索不到内容
+检查：
+
+- Qdrant 是否已启动
+- `nomic-embed-text` 是否已安装
+- 是否已导入 `rag_knowledge_documents`
+- 是否已执行索引重建脚本
+- 文档是否为启用状态 `is_active=true`
+
+### 3. PDF / DOCX 导入失败
+检查：
+
+- 是否已安装 `pypdf`、`python-docx`
+- 文件是否损坏
+- 文件中是否真实包含可提取文本
+
+---
+
+如果你后续要继续扩展 RAG，建议下一步增加：
+
+- 更细粒度 chunk 策略
+- 文档去重
+- 文档版本管理
+- 召回评估与命中率统计
+- 后台批量导入任务队列

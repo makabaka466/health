@@ -108,13 +108,34 @@
           </div>
           <el-tag type="success" effect="plain">{{ aiHomeAdvice.based_on_public_records }} 条记录</el-tag>
         </div>
-        <p class="advice-summary">{{ aiHomeAdvice.summary }}</p>
-        <ul class="advice-list">
-          <li v-for="(item, idx) in aiHomeAdvice.recommendations" :key="`advice-${idx}`">{{ item }}</li>
-        </ul>
-        <div v-if="aiHomeAdvice.insights.length" class="insight-list">
-          <el-tag v-for="(insight, idx) in aiHomeAdvice.insights" :key="`insight-${idx}`" effect="light">{{ insight }}</el-tag>
+        <div v-if="aiHomeAdviceLoading" class="advice-loading">
+          <el-skeleton animated>
+            <template #template>
+              <el-skeleton-item variant="p" style="width: 72%; height: 18px;" />
+              <div class="advice-loading-lines">
+                <el-skeleton-item variant="text" style="width: 100%;" />
+                <el-skeleton-item variant="text" style="width: 86%;" />
+                <el-skeleton-item variant="text" style="width: 92%;" />
+              </div>
+              <div class="advice-loading-tags">
+                <el-skeleton-item variant="button" style="width: 88px; height: 28px;" />
+                <el-skeleton-item variant="button" style="width: 104px; height: 28px;" />
+              </div>
+            </template>
+          </el-skeleton>
         </div>
+        <template v-else>
+          <p class="advice-summary">{{ aiHomeAdvice.summary }}</p>
+          <div v-if="aiHomeAdvice.updated_at" class="advice-updated-at">
+            最近更新：{{ formatDateTime(aiHomeAdvice.updated_at) }}
+          </div>
+          <ul class="advice-list">
+            <li v-for="(item, idx) in aiHomeAdvice.recommendations" :key="`advice-${idx}`">{{ item }}</li>
+          </ul>
+          <div v-if="aiHomeAdvice.insights.length" class="insight-list">
+            <el-tag v-for="(insight, idx) in aiHomeAdvice.insights" :key="`insight-${idx}`" effect="light">{{ insight }}</el-tag>
+          </div>
+        </template>
       </el-card>
 
       <el-card class="panel-card" shadow="hover">
@@ -184,12 +205,13 @@
 </template>
 
 <script setup>
-import { computed, onMounted, ref } from 'vue'
-import { useRouter } from 'vue-router'
+import { computed, onActivated, onMounted, ref, watch } from 'vue'
+import { useRoute, useRouter } from 'vue-router'
 import { knowledgeApi } from '../api/knowledge'
 import { aiApi } from '../api/ai'
 
 const router = useRouter()
+const route = useRoute()
 
 const quickActions = ref([
   { title: '健康趋势', description: '查看你的健康数据趋势', icon: 'TrendCharts', color: '#409EFF', route: '/dashboard/health-data' },
@@ -216,8 +238,10 @@ const aiHomeAdvice = ref({
   summary: '正在生成个性化建议...',
   recommendations: [],
   insights: [],
-  based_on_public_records: 0
+  based_on_public_records: 0,
+  updated_at: ''
 })
+const aiHomeAdviceLoading = ref(true)
 
 const todayDate = computed(() => {
   const now = new Date()
@@ -249,6 +273,11 @@ const getArticleBannerStyle = (article) => ({
   backgroundPosition: 'center'
 })
 
+const formatDateTime = (value) => {
+  if (!value) return ''
+  return new Date(value).toLocaleString('zh-CN')
+}
+
 const loadRecommendations = async () => {
   try {
     const data = await knowledgeApi.getHomepageRecommendations()
@@ -265,21 +294,26 @@ const loadRecommendations = async () => {
 }
 
 const loadAiHomeAdvice = async () => {
+  aiHomeAdviceLoading.value = true
   try {
     const data = await aiApi.getHomeAdvice()
     aiHomeAdvice.value = {
       summary: data?.summary || '暂无建议',
       recommendations: data?.recommendations || [],
       insights: data?.insights || [],
-      based_on_public_records: data?.based_on_public_records || 0
+      based_on_public_records: data?.based_on_public_records || 0,
+      updated_at: data?.updated_at || ''
     }
   } catch {
     aiHomeAdvice.value = {
       summary: '个性化建议加载失败，请稍后重试。',
       recommendations: [],
       insights: [],
-      based_on_public_records: 0
+      based_on_public_records: 0,
+      updated_at: ''
     }
+  } finally {
+    aiHomeAdviceLoading.value = false
   }
 }
 
@@ -287,6 +321,21 @@ onMounted(() => {
   loadRecommendations()
   loadAiHomeAdvice()
 })
+
+onActivated(() => {
+  if (route.path === '/dashboard') {
+    loadAiHomeAdvice()
+  }
+})
+
+watch(
+  () => route.path,
+  (path) => {
+    if (path === '/dashboard') {
+      loadAiHomeAdvice()
+    }
+  }
+)
 </script>
 
 <style scoped>
@@ -608,6 +657,26 @@ onMounted(() => {
   margin: 6px 0 0;
   color: #334155;
   line-height: 1.8;
+}
+
+.advice-loading-lines,
+.advice-loading-tags {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  margin-top: 16px;
+}
+
+.advice-loading-tags {
+  flex-direction: row;
+  gap: 10px;
+  margin-top: 18px;
+}
+
+.advice-updated-at {
+  margin-top: 10px;
+  color: #94a3b8;
+  font-size: 12px;
 }
 
 .advice-list {

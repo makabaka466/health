@@ -1,5 +1,5 @@
 from pydantic import BaseModel, EmailStr, Field
-from typing import Optional, List
+from typing import Optional, List, Any, Dict
 from datetime import datetime, date
 
 # 用户相关Schema
@@ -14,6 +14,7 @@ class UserCreate(UserBase):
 
 class UserResponse(UserBase):
     id: int
+    email: str
     role: str
     is_active: bool
     wallet_address: Optional[str] = None
@@ -66,6 +67,50 @@ class RagKnowledgeImportResponse(BaseModel):
     imported_count: int = 0
     skipped_files: List[str] = Field(default_factory=list)
     message: str
+
+
+class RagKnowledgeChunkStatusResponse(BaseModel):
+    chunk_id: int
+    document_id: int
+    point_id: str
+    chunk_index: int
+    char_count: int
+    is_active: bool
+    content_preview: str
+    created_at: datetime
+    updated_at: datetime
+    vector_exists: bool = False
+    vector_dimension: int = 0
+    vector_preview: List[float] = Field(default_factory=list)
+    payload: Dict[str, Any] = Field(default_factory=dict)
+
+
+class RagKnowledgeDocChunkStatusListResponse(BaseModel):
+    document: RagKnowledgeDocResponse
+    collection: str
+    vector_enabled: bool
+    total_chunks: int = 0
+    indexed_chunks: int = 0
+    missing_vectors: int = 0
+    items: List[RagKnowledgeChunkStatusResponse] = Field(default_factory=list)
+
+
+class RagKnowledgeChunkVectorResponse(BaseModel):
+    chunk_id: int
+    document_id: int
+    document_title: str
+    point_id: str
+    chunk_index: int
+    char_count: int
+    is_active: bool
+    content: str
+    created_at: datetime
+    updated_at: datetime
+    collection: str
+    vector_exists: bool = False
+    vector_dimension: int = 0
+    vector: List[float] = Field(default_factory=list)
+    payload: Dict[str, Any] = Field(default_factory=dict)
 
 
 class AdminUserResponse(BaseModel):
@@ -137,6 +182,13 @@ class HealthArticleListResponse(BaseModel):
     total: int
     page: int
     page_size: int
+
+
+class HealthArticleImportResponse(BaseModel):
+    items: List[HealthArticleResponse] = Field(default_factory=list)
+    imported_count: int = 0
+    skipped_files: List[str] = Field(default_factory=list)
+    message: str
 
 
 class FavoriteResponse(BaseModel):
@@ -250,6 +302,8 @@ class HealthAnalysisRequest(BaseModel):
 class ChatMessage(BaseModel):
     message: str
     is_user: bool = True
+    chat_id: Optional[int] = None
+    selected_private_context_ids: List[str] = Field(default_factory=list)
 
 class ChatResponse(BaseModel):
     reply: str
@@ -257,6 +311,7 @@ class ChatResponse(BaseModel):
     chat_id: Optional[int] = None
     references: List[str] = Field(default_factory=list)
     personalization_used: bool = False
+    private_context_used: int = 0
 
 
 class AiHomeAdviceResponse(BaseModel):
@@ -264,6 +319,20 @@ class AiHomeAdviceResponse(BaseModel):
     recommendations: List[str] = Field(default_factory=list)
     insights: List[str] = Field(default_factory=list)
     based_on_public_records: int = 0
+    updated_at: Optional[str] = None
+
+
+class AiPrivateContextOption(BaseModel):
+    id: str
+    type: str
+    label: str
+    description: Optional[str] = None
+    available: bool = True
+    created_at: Optional[datetime] = None
+
+
+class AiPrivateContextOptionsResponse(BaseModel):
+    items: List[AiPrivateContextOption] = Field(default_factory=list)
 
 # 知识库Schema
 class KnowledgeBase(BaseModel):

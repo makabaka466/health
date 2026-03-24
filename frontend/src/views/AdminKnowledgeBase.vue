@@ -56,8 +56,9 @@
             {{ formatDateTime(scope.row.updated_at) }}
           </template>
         </el-table-column>
-        <el-table-column :label="labels.actions" width="220" fixed="right">
+        <el-table-column :label="labels.actions" width="300" fixed="right">
           <template #default="scope">
+            <el-button link type="success" @click="openChunkDialog(scope.row)">{{ labels.viewVectors }}</el-button>
             <el-button link type="primary" @click="openEditDialog(scope.row)">{{ labels.edit }}</el-button>
             <el-button link type="danger" @click="removeDoc(scope.row)">{{ labels.delete }}</el-button>
           </template>
@@ -152,6 +153,74 @@
         <el-button type="primary" :loading="importing" @click="submitImport">{{ labels.startImport }}</el-button>
       </template>
     </el-dialog>
+
+    <el-dialog v-model="chunkDialogVisible" :title="labels.chunkDialogTitle" width="1000px">
+      <div v-if="currentChunkDoc" class="chunk-summary">
+        <el-descriptions :column="2" border size="small">
+          <el-descriptions-item :label="labels.title">{{ currentChunkDoc.title }}</el-descriptions-item>
+          <el-descriptions-item :label="labels.category">{{ currentChunkDoc.category }}</el-descriptions-item>
+          <el-descriptions-item :label="labels.chunkTotal">{{ chunkStatus.total_chunks || 0 }}</el-descriptions-item>
+          <el-descriptions-item :label="labels.vectorIndexed">{{ chunkStatus.indexed_chunks || 0 }}</el-descriptions-item>
+          <el-descriptions-item :label="labels.vectorMissing">{{ chunkStatus.missing_vectors || 0 }}</el-descriptions-item>
+          <el-descriptions-item :label="labels.vectorCollection">{{ chunkStatus.collection || '-' }}</el-descriptions-item>
+        </el-descriptions>
+      </div>
+
+      <el-table v-loading="chunkLoading" :data="chunkItems" border stripe max-height="520">
+        <el-table-column prop="chunk_index" :label="labels.chunkIndex" width="90" />
+        <el-table-column prop="char_count" :label="labels.charCount" width="100" />
+        <el-table-column :label="labels.vectorStatus" width="120">
+          <template #default="scope">
+            <el-tag :type="scope.row.vector_exists ? 'success' : 'danger'">
+              {{ scope.row.vector_exists ? labels.vectorExists : labels.vectorMissingShort }}
+            </el-tag>
+          </template>
+        </el-table-column>
+        <el-table-column prop="vector_dimension" :label="labels.vectorDimension" width="110" />
+        <el-table-column prop="point_id" :label="labels.pointId" min-width="220" show-overflow-tooltip />
+        <el-table-column prop="content_preview" :label="labels.chunkPreview" min-width="320" show-overflow-tooltip />
+        <el-table-column :label="labels.actions" width="120" fixed="right">
+          <template #default="scope">
+            <el-button link type="primary" @click="openVectorDialog(scope.row)">{{ labels.viewVector }}</el-button>
+          </template>
+        </el-table-column>
+      </el-table>
+    </el-dialog>
+
+    <el-dialog v-model="vectorDialogVisible" :title="labels.vectorDialogTitle" width="900px">
+      <div v-loading="vectorLoading">
+        <el-empty v-if="!currentVectorChunk" :description="labels.noVectorData" />
+        <template v-else>
+          <el-descriptions :column="2" border size="small" class="vector-descriptions">
+            <el-descriptions-item :label="labels.title">{{ currentVectorChunk.document_title }}</el-descriptions-item>
+            <el-descriptions-item :label="labels.chunkIndex">{{ currentVectorChunk.chunk_index }}</el-descriptions-item>
+            <el-descriptions-item :label="labels.pointId">{{ currentVectorChunk.point_id }}</el-descriptions-item>
+            <el-descriptions-item :label="labels.vectorDimension">{{ currentVectorChunk.vector_dimension }}</el-descriptions-item>
+            <el-descriptions-item :label="labels.vectorStatus">
+              <el-tag :type="currentVectorChunk.vector_exists ? 'success' : 'danger'">
+                {{ currentVectorChunk.vector_exists ? labels.vectorExists : labels.vectorMissingShort }}
+              </el-tag>
+            </el-descriptions-item>
+            <el-descriptions-item :label="labels.vectorCollection">{{ currentVectorChunk.collection || '-' }}</el-descriptions-item>
+          </el-descriptions>
+
+          <div class="vector-block">
+            <div class="vector-block-title">{{ labels.chunkContent }}</div>
+            <pre class="vector-content">{{ currentVectorChunk.content }}</pre>
+          </div>
+
+          <div class="vector-block">
+            <div class="vector-block-title">{{ labels.vectorValues }}</div>
+            <pre class="vector-content">{{ formatVector(currentVectorChunk.vector) }}</pre>
+          </div>
+
+          <div class="vector-block">
+            <div class="vector-block-title">{{ labels.vectorPayload }}</div>
+            <pre class="vector-content">{{ formatPayload(currentVectorChunk.payload) }}</pre>
+          </div>
+        </template>
+      </div>
+    </el-dialog>
   </div>
 </template>
 
@@ -177,6 +246,7 @@ const labels = {
   status: '\u72b6\u6001',
   updatedAt: '\u66f4\u65b0\u65f6\u95f4',
   actions: '\u64cd\u4f5c',
+  viewVectors: '\u5206\u5757/\u5411\u91cf',
   enabled: '\u542f\u7528',
   disabled: '\u505c\u7528',
   edit: '\u7f16\u8f91',
@@ -211,7 +281,26 @@ const labels = {
   sampleSummary: '\u53ef\u4ee5\u5148\u5bfc\u5165\u793a\u4f8b\u6570\u636e\uff0c\u4e5f\u53ef\u901a\u8fc7 PDF / Word \u6587\u6863\u5feb\u901f\u5165\u5e93',
   countSummaryPrefix: '\u5f53\u524d\u5171\u6709',
   countSummarySuffix: '\u6761\u77e5\u8bc6\u6587\u6863',
-  importSkippedPrefix: '\u4ee5\u4e0b\u6587\u4ef6\u672a\u5bfc\u5165\uff1a'
+  importSkippedPrefix: '\u4ee5\u4e0b\u6587\u4ef6\u672a\u5bfc\u5165\uff1a',
+  chunkDialogTitle: '\u6587\u6863\u5206\u5757\u4e0e\u5411\u91cf\u72b6\u6001',
+  vectorDialogTitle: '\u5411\u91cf\u8be6\u60c5',
+  chunkTotal: '\u5206\u5757\u603b\u6570',
+  vectorIndexed: '\u5df2\u5efa\u5411\u91cf',
+  vectorMissing: '\u7f3a\u5931\u5411\u91cf',
+  vectorCollection: 'Qdrant Collection',
+  chunkIndex: '\u5757\u5e8f\u53f7',
+  charCount: '\u5b57\u7b26\u6570',
+  vectorStatus: '\u5411\u91cf\u72b6\u6001',
+  vectorExists: '\u5df2\u5b58\u5728',
+  vectorMissingShort: '\u7f3a\u5931',
+  vectorDimension: '\u7ef4\u5ea6',
+  pointId: 'Point ID',
+  chunkPreview: '\u7247\u6bb5\u9884\u89c8',
+  viewVector: '\u67e5\u770b\u5411\u91cf',
+  noVectorData: '\u6682\u65e0\u5411\u91cf\u6570\u636e',
+  chunkContent: '\u5206\u5757\u5185\u5bb9',
+  vectorValues: '\u5411\u91cf\u6570\u503c',
+  vectorPayload: 'Payload'
 }
 
 const categories = [
@@ -262,6 +351,21 @@ const importForm = reactive({
   is_active: true
 })
 
+const chunkDialogVisible = ref(false)
+const chunkLoading = ref(false)
+const currentChunkDoc = ref(null)
+const chunkStatus = ref({
+  collection: '',
+  total_chunks: 0,
+  indexed_chunks: 0,
+  missing_vectors: 0
+})
+const chunkItems = ref([])
+
+const vectorDialogVisible = ref(false)
+const vectorLoading = ref(false)
+const currentVectorChunk = ref(null)
+
 const rules = {
   title: [{ required: true, message: labels.titlePlaceholder, trigger: 'blur' }],
   category: [{ required: true, message: labels.categoryRequired, trigger: 'change' }],
@@ -280,6 +384,10 @@ const parseTags = (text) =>
     .split(',')
     .map((item) => item.trim())
     .filter(Boolean)
+
+const formatPayload = (payload) => JSON.stringify(payload || {}, null, 2)
+
+const formatVector = (vector) => JSON.stringify(vector || [], null, 2)
 
 const loadDocs = async () => {
   loading.value = true
@@ -416,6 +524,46 @@ const closeImportDialog = () => {
   resetImportForm()
 }
 
+const openChunkDialog = async (row) => {
+  chunkDialogVisible.value = true
+  chunkLoading.value = true
+  currentChunkDoc.value = row
+  chunkItems.value = []
+  chunkStatus.value = {
+    collection: '',
+    total_chunks: 0,
+    indexed_chunks: 0,
+    missing_vectors: 0
+  }
+  try {
+    const result = await knowledgeApi.getRagDocChunks(row.id)
+    chunkStatus.value = {
+      collection: result.collection || '',
+      total_chunks: result.total_chunks || 0,
+      indexed_chunks: result.indexed_chunks || 0,
+      missing_vectors: result.missing_vectors || 0
+    }
+    chunkItems.value = result.items || []
+  } catch (error) {
+    ElMessage.error(error?.response?.data?.detail || labels.loadFailed)
+  } finally {
+    chunkLoading.value = false
+  }
+}
+
+const openVectorDialog = async (chunk) => {
+  vectorDialogVisible.value = true
+  vectorLoading.value = true
+  currentVectorChunk.value = null
+  try {
+    currentVectorChunk.value = await knowledgeApi.getRagChunkVector(chunk.chunk_id, { vector_limit: 128 })
+  } catch (error) {
+    ElMessage.error(error?.response?.data?.detail || labels.loadFailed)
+  } finally {
+    vectorLoading.value = false
+  }
+}
+
 const handleUploadChange = (_file, fileList) => {
   importFiles.value = fileList
 }
@@ -518,6 +666,38 @@ onMounted(loadDocs)
   margin-top: 16px;
   display: flex;
   justify-content: flex-end;
+}
+
+.chunk-summary {
+  margin-bottom: 16px;
+}
+
+.vector-descriptions {
+  margin-bottom: 16px;
+}
+
+.vector-block {
+  margin-top: 16px;
+}
+
+.vector-block-title {
+  margin-bottom: 8px;
+  font-weight: 600;
+  color: #334155;
+}
+
+.vector-content {
+  margin: 0;
+  padding: 12px;
+  border-radius: 12px;
+  background: #0f172a;
+  color: #e2e8f0;
+  white-space: pre-wrap;
+  word-break: break-word;
+  max-height: 220px;
+  overflow: auto;
+  font-size: 12px;
+  line-height: 1.6;
 }
 
 .tag-item {

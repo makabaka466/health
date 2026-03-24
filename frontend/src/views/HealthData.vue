@@ -247,7 +247,6 @@
             v-model="healthForm.is_private"
             active-text="保密"
             inactive-text="公开"
-            disabled
           />
         </el-form-item>
 
@@ -266,7 +265,7 @@
             </el-button>
           </div>
           <el-alert
-            title="仅支持 PDF，文件会单独作为一条记录入库，且默认保密"
+            title="仅支持 PDF，上传时可自由选择公开或保密"
             type="info"
             show-icon
             :closable="false"
@@ -337,7 +336,7 @@ const privateText = '\u4fdd\u5bc6'
 const publicText = '\u516c\u5f00'
 const actionsColumnText = '\u64cd\u4f5c'
 const editText = '\u7f16\u8f91'
-const replacePdfText = '\u66ff\u6362PDF'
+const replacePdfText = '\u7f16\u8f91'
 const deleteText = '\u5220\u9664'
 const onchainColumnText = '\u94fe\u4e0a\u9a8c\u771f'
 const onchainVerifiedText = '\u5df2\u9a8c\u771f'
@@ -592,7 +591,7 @@ const openPdfDialog = () => {
     blood_sugar: null,
     other_text: '',
     record_type: 'pdf',
-    is_private: true,
+    is_private: false,
     health_data_file_name: null,
     health_data_file: null,
     recorded_at: new Date()
@@ -661,7 +660,6 @@ const handlePdfFileChange = (uploadFile) => {
   reader.onload = () => {
     healthForm.value.health_data_file = reader.result
     healthForm.value.health_data_file_name = file.name
-    healthForm.value.is_private = true
   }
   reader.readAsDataURL(file)
 }
@@ -719,13 +717,8 @@ const saveHealthData = async () => {
       payload.data_content = null
     }
 
-    if (healthForm.value.is_private) {
-      const privateKey = await ensureUnlockedPrivateData()
-      if (!privateKey) {
-        saving.value = false
-        return
-      }
-      payload.private_key = privateKey
+    if (healthForm.value.is_private && unlockedPrivateKey.value) {
+      payload.private_key = unlockedPrivateKey.value
     }
     
     if (isEditing.value) {

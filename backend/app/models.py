@@ -6,7 +6,7 @@ from app.database import Base
 
 
 class Role(Base):
-    """身份表：定义系统中的角色类型（如 admin、user）。"""
+    """角色表。"""
 
     __tablename__ = "roles"
 
@@ -19,22 +19,29 @@ class Role(Base):
 
 
 class User(Base):
-    """用户账号表：保存登录信息，并通过 role_id 关联身份表。"""
+    """用户账号表。"""
 
     __tablename__ = "users"
 
     id = Column(Integer, primary_key=True, index=True)
     username = Column(String(50), unique=True, index=True, nullable=False)
     email = Column(String(255), unique=True, index=True, nullable=False)
+    encrypted_email = Column(Text, nullable=True)
+    email_hash = Column(String(64), unique=True, index=True, nullable=True)
     password_hash = Column(String(255), nullable=False)
     wallet_address = Column(String(42), unique=True, index=True, nullable=True)
+    encrypted_wallet_address = Column(Text, nullable=True)
+    wallet_address_hash = Column(String(64), unique=True, index=True, nullable=True)
     private_key_hash = Column(String(128), nullable=True)
     encrypted_private_key = Column(Text, nullable=True)
     encrypted_profile_data = Column(Text, nullable=True)
     public_profile_data = Column(Text, nullable=True)
     profile_is_public = Column(Boolean, default=False, nullable=False)
+    home_ai_advice_cache = Column(Text, nullable=True)
     social_provider = Column(String(20), nullable=True, index=True)
     social_open_id = Column(String(128), nullable=True, index=True)
+    encrypted_social_open_id = Column(Text, nullable=True)
+    social_open_id_hash = Column(String(64), nullable=True, index=True)
     social_nickname = Column(String(100), nullable=True)
     role = Column(String(20), default="user", nullable=False)
     role_id = Column(Integer, ForeignKey("roles.id", ondelete="SET NULL"), nullable=True, index=True)
@@ -50,7 +57,7 @@ class User(Base):
 
 
 class HealthData(Base):
-    """健康数据表：统一存储文本健康信息与 PDF 文件。"""
+    """健康数据表。"""
 
     __tablename__ = "health_data_user"
 
@@ -73,11 +80,12 @@ class HealthData(Base):
 
 
 class ChatMessage(Base):
-    """聊天记录表：保存用户与 AI 助手的对话消息。"""
+    """聊天记录表。"""
 
     __tablename__ = "chat_messages"
 
     id = Column(Integer, primary_key=True, index=True)
+    session_id = Column(Integer, nullable=True, index=True)
     user_id = Column(Integer, ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True)
     message = Column(Text, nullable=False)
     is_user = Column(Boolean, default=True, nullable=False)
@@ -87,7 +95,7 @@ class ChatMessage(Base):
 
 
 class HealthArticle(Base):
-    """健康知识文章表：存储科普文章内容与基础统计信息。"""
+    """健康知识文章表。"""
 
     __tablename__ = "health_articles"
 
@@ -107,7 +115,7 @@ class HealthArticle(Base):
 
 
 class RagKnowledgeDocument(Base):
-    """RAG 知识库文档：供 AI 问答检索增强使用。"""
+    """RAG 知识库文档。"""
 
     __tablename__ = "rag_knowledge_documents"
 
@@ -121,9 +129,30 @@ class RagKnowledgeDocument(Base):
     created_at = Column(DateTime, server_default=func.now(), nullable=False)
     updated_at = Column(DateTime, server_default=func.now(), onupdate=func.now(), nullable=False)
 
+    chunks = relationship("RagKnowledgeChunk", back_populates="document", cascade="all, delete-orphan")
+
+
+class RagKnowledgeChunk(Base):
+    """RAG 文档分块与向量索引元数据。"""
+
+    __tablename__ = "rag_knowledge_chunks"
+    __table_args__ = (UniqueConstraint("document_id", "chunk_index", name="uq_rag_chunk_doc_index"),)
+
+    id = Column(Integer, primary_key=True, index=True)
+    document_id = Column(Integer, ForeignKey("rag_knowledge_documents.id", ondelete="CASCADE"), nullable=False, index=True)
+    point_id = Column(String(80), unique=True, nullable=False, index=True)
+    chunk_index = Column(Integer, nullable=False)
+    content = Column(Text, nullable=False)
+    char_count = Column(Integer, nullable=False, default=0)
+    is_active = Column(Boolean, default=True, nullable=False, index=True)
+    created_at = Column(DateTime, server_default=func.now(), nullable=False)
+    updated_at = Column(DateTime, server_default=func.now(), onupdate=func.now(), nullable=False)
+
+    document = relationship("RagKnowledgeDocument", back_populates="chunks")
+
 
 class ArticleFavorite(Base):
-    """文章收藏表：记录用户收藏的健康文章。"""
+    """文章收藏表。"""
 
     __tablename__ = "article_favorites"
     __table_args__ = (UniqueConstraint("user_id", "article_id", name="uq_article_favorite_user_article"),)
@@ -138,7 +167,7 @@ class ArticleFavorite(Base):
 
 
 class ArticleReadHistory(Base):
-    """文章阅读记录表：记录用户阅读行为与最近阅读时间。"""
+    """文章阅读记录表。"""
 
     __tablename__ = "article_read_histories"
     __table_args__ = (UniqueConstraint("user_id", "article_id", name="uq_article_read_user_article"),)
@@ -154,7 +183,7 @@ class ArticleReadHistory(Base):
 
 
 class SystemSetting(Base):
-    """系统设置表：保存管理员可配置的系统级参数。"""
+    """系统设置表。"""
 
     __tablename__ = "system_settings"
 
@@ -167,7 +196,7 @@ class SystemSetting(Base):
 
 
 class SystemLog(Base):
-    """系统日志表：记录关键管理行为，方便审计。"""
+    """系统日志表。"""
 
     __tablename__ = "system_logs"
 

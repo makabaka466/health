@@ -24,24 +24,48 @@ def _ensure_schema_updates() -> None:
         from app import models  # noqa: F401
 
         models.RagKnowledgeDocument.__table__.create(bind=engine, checkfirst=True)
+        models.RagKnowledgeChunk.__table__.create(bind=engine, checkfirst=True)
+
+    if "rag_knowledge_chunks" not in inspector.get_table_names():
+        from app import models  # noqa: F401
+
+        models.RagKnowledgeChunk.__table__.create(bind=engine, checkfirst=True)
 
     if "users" in inspector.get_table_names():
         user_columns = {col["name"] for col in inspector.get_columns("users")}
         user_alter_sql = {
+            "encrypted_email": "ALTER TABLE users ADD COLUMN encrypted_email TEXT NULL",
+            "email_hash": "ALTER TABLE users ADD COLUMN email_hash VARCHAR(64) NULL",
             "wallet_address": "ALTER TABLE users ADD COLUMN wallet_address VARCHAR(42) NULL",
+            "encrypted_wallet_address": "ALTER TABLE users ADD COLUMN encrypted_wallet_address TEXT NULL",
+            "wallet_address_hash": "ALTER TABLE users ADD COLUMN wallet_address_hash VARCHAR(64) NULL",
             "private_key_hash": "ALTER TABLE users ADD COLUMN private_key_hash VARCHAR(128) NULL",
             "encrypted_private_key": "ALTER TABLE users ADD COLUMN encrypted_private_key TEXT NULL",
             "encrypted_profile_data": "ALTER TABLE users ADD COLUMN encrypted_profile_data TEXT NULL",
             "public_profile_data": "ALTER TABLE users ADD COLUMN public_profile_data TEXT NULL",
             "profile_is_public": "ALTER TABLE users ADD COLUMN profile_is_public BOOLEAN NOT NULL DEFAULT 0",
+            "home_ai_advice_cache": "ALTER TABLE users ADD COLUMN home_ai_advice_cache TEXT NULL",
             "social_provider": "ALTER TABLE users ADD COLUMN social_provider VARCHAR(20) NULL",
             "social_open_id": "ALTER TABLE users ADD COLUMN social_open_id VARCHAR(128) NULL",
+            "encrypted_social_open_id": "ALTER TABLE users ADD COLUMN encrypted_social_open_id TEXT NULL",
+            "social_open_id_hash": "ALTER TABLE users ADD COLUMN social_open_id_hash VARCHAR(64) NULL",
             "social_nickname": "ALTER TABLE users ADD COLUMN social_nickname VARCHAR(100) NULL",
         }
 
         with engine.begin() as conn:
             for column, sql in user_alter_sql.items():
                 if column not in user_columns:
+                    conn.execute(text(sql))
+
+    if "chat_messages" in inspector.get_table_names():
+        chat_columns = {col["name"] for col in inspector.get_columns("chat_messages")}
+        chat_alter_sql = {
+            "session_id": "ALTER TABLE chat_messages ADD COLUMN session_id INTEGER NULL",
+        }
+
+        with engine.begin() as conn:
+            for column, sql in chat_alter_sql.items():
+                if column not in chat_columns:
                     conn.execute(text(sql))
 
     if "health_data_user" in inspector.get_table_names():
