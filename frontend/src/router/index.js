@@ -38,12 +38,14 @@ const routes = [
       {
         path: 'ai-chat',
         name: 'AIChat',
-        component: () => import('../views/AiAssistant.vue')
+        component: () => import('../views/AiAssistant.vue'),
+        meta: { keepAlive: true }
       },
       {
         path: 'ai-assistant',
         name: 'AiAssistant',
-        component: () => import('../views/AiAssistant.vue')
+        component: () => import('../views/AiAssistant.vue'),
+        meta: { keepAlive: true }
       },
       {
         path: 'knowledge-center',
@@ -79,9 +81,15 @@ const routes = [
         component: () => import('../views/AdminUsers.vue')
       },
       {
+        path: 'health-data',
+        name: 'AdminHealthData',
+        component: () => import('../views/admin/AdminHealthRecords.vue')
+      },
+      {
         path: 'ai-chat',
         name: 'AdminAIChat',
-        component: () => import('../views/AiAssistant.vue')
+        component: () => import('../views/AiAssistant.vue'),
+        meta: { keepAlive: true }
       },
       {
         path: 'knowledge-base',

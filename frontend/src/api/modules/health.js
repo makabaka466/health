@@ -11,8 +11,8 @@ export const healthApi = {
     return api.post('/health/records', recordData)
   },
 
-  async getRecord(recordId) {
-    return api.get(`/health/records/${recordId}`)
+  async getRecord(recordId, params = {}) {
+    return api.get(`/health/records/${recordId}`, { params })
   },
 
   async updateRecord(recordId, recordData) {

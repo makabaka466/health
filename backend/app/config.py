@@ -1,4 +1,6 @@
+import json
 import os
+from pathlib import Path
 from typing import Optional
 
 
@@ -7,6 +9,26 @@ def _env_bool(name: str, default: bool) -> bool:
     if raw is None:
         return default
     return raw.strip().lower() in {"1", "true", "yes", "on"}
+
+
+def _default_health_data_contract_address() -> str:
+    return "0x0D47865Ab9dC3E31DF84de494D30C886d50eC97e"
+
+
+def _default_health_data_contract_abi_json() -> Optional[str]:
+    artifact_path = Path(__file__).resolve().parents[2] / "contracts" / "artifacts" / "HealthDataAccess.json"
+    if not artifact_path.exists():
+        return None
+
+    try:
+        artifact = json.loads(artifact_path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError):
+        return None
+
+    abi = artifact.get("abi")
+    if not abi:
+        return None
+    return json.dumps(abi, ensure_ascii=False)
 
 
 class Settings:
@@ -63,8 +85,18 @@ class Settings:
 
     # 链上配置（Ganache / EVM）
     WEB3_PROVIDER_URI: str = os.getenv("WEB3_PROVIDER_URI", "http://127.0.0.1:7545")
-    HEALTH_DATA_CONTRACT_ADDRESS: Optional[str] = os.getenv("HEALTH_DATA_CONTRACT_ADDRESS")
-    HEALTH_DATA_CONTRACT_ABI_JSON: Optional[str] = os.getenv("HEALTH_DATA_CONTRACT_ABI_JSON")
+    HEALTH_DATA_CONTRACT_ADDRESS: Optional[str] = os.getenv(
+        "HEALTH_DATA_CONTRACT_ADDRESS",
+        _default_health_data_contract_address(),
+    )
+    HEALTH_DATA_CONTRACT_ABI_JSON: Optional[str] = os.getenv(
+        "HEALTH_DATA_CONTRACT_ABI_JSON",
+        _default_health_data_contract_abi_json(),
+    )
+    WEB3_AUTO_FUND_NEW_USERS: bool = _env_bool("WEB3_AUTO_FUND_NEW_USERS", True)
+    WEB3_AUTO_FUND_AMOUNT_ETH: str = os.getenv("WEB3_AUTO_FUND_AMOUNT_ETH", "10")
+    WEB3_FAUCET_FROM_ADDRESS: Optional[str] = os.getenv("WEB3_FAUCET_FROM_ADDRESS")
+    WEB3_GAS_PRICE_GWEI: str = os.getenv("WEB3_GAS_PRICE_GWEI", "2")
 
     # 跨域配置
     BACKEND_CORS_ORIGINS: list = ["http://localhost:3000", "http://localhost:8080"]

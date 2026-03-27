@@ -201,7 +201,7 @@
 <script setup>
 import { ref, reactive, computed, onMounted, watch } from 'vue'
 import { useRouter } from 'vue-router'
-import { ElMessage } from 'element-plus'
+import { ElMessage, ElMessageBox } from 'element-plus'
 import { registerUser } from '../api/auth'
 
 const router = useRouter()
@@ -344,6 +344,37 @@ const extractError = (error, fallback) => {
   return fallback
 }
 
+const escapeHtml = (value) => String(value ?? '')
+  .replace(/&/g, '&amp;')
+  .replace(/</g, '&lt;')
+  .replace(/>/g, '&gt;')
+  .replace(/"/g, '&quot;')
+  .replace(/'/g, '&#39;')
+
+const buildRegisterSuccessHtml = (result) => {
+  const sections = [
+    '<p><strong>注册成功，请立即保存以下信息：</strong></p>',
+    `<p><strong>钱包地址：</strong><br>${escapeHtml(result?.wallet_address || '-')}</p>`,
+    `<p><strong>私钥（只展示这一次）：</strong><br><span style="word-break: break-all;">${escapeHtml(result?.generated_private_key || '-')}</span></p>`
+  ]
+
+  if (result?.faucet_status === 'success') {
+    sections.push(
+      `<p><strong>测试 ETH：</strong> 已自动发放 ${escapeHtml(result?.faucet_amount_eth || '10')} ETH</p>`,
+      `<p><strong>钱包余额：</strong> ${escapeHtml(result?.wallet_balance_eth || '-')} ETH</p>`,
+      `<p><strong>领取交易：</strong><br><span style="word-break: break-all;">${escapeHtml(result?.faucet_tx_hash || '-')}</span></p>`
+    )
+  } else if (result?.faucet_enabled) {
+    sections.push(
+      `<p><strong>测试 ETH 发放状态：</strong> ${escapeHtml(result?.faucet_status || 'failed')}</p>`,
+      `<p><strong>失败原因：</strong><br><span style="word-break: break-all;">${escapeHtml(result?.faucet_error || '未知错误')}</span></p>`
+    )
+  }
+
+  sections.push('<p style="color:#e6a23c;"><strong>请务必离开页面前备份私钥，否则后续无法解锁私密健康数据。</strong></p>')
+  return sections.join('')
+}
+
 const showTerms = () => {
   termsDialogVisible.value = true
 }
@@ -365,7 +396,7 @@ const handleRegister = async () => {
 
     loading.value = true
 
-    await registerUser({
+    const result = await registerUser({
       username: registerForm.username,
       email: registerForm.email,
       password: registerForm.password,
@@ -373,15 +404,15 @@ const handleRegister = async () => {
       admin_register_key: registerForm.role === 'admin' ? registerForm.admin_register_key : null
     })
 
-    ElMessage.success('注册成功！正在跳转到登录页面...')
-    
-    // 延迟跳转，让用户看到成功消息
-    setTimeout(() => {
-      router.push({
-        path: '/login',
-        query: { username: registerForm.username, registered: 'true' }
-      })
-    }, 1500)
+    ElMessage.success('注册成功')
+    await ElMessageBox.alert(buildRegisterSuccessHtml(result), '注册成功', {
+      confirmButtonText: '我已保存，去登录',
+      dangerouslyUseHTMLString: true
+    })
+    router.push({
+      path: '/login',
+      query: { username: registerForm.username, registered: 'true' }
+    })
     
   } catch (error) {
     ElMessage.error(extractError(error, '注册失败，请重试'))

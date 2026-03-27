@@ -13,3 +13,7 @@ export async function updateSystemSettings(payload) {
 export async function getSystemLogs(params = {}) {
   return adminSystemApi.get('/admin/system/logs', { params })
 }
+
+export async function getAdminHealthRecords(params = {}) {
+  return adminSystemApi.get('/admin/system/health-records', { params })
+}

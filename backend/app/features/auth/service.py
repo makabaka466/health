@@ -20,6 +20,7 @@ from app.features.auth.privacy import (
     reveal_social_open_id,
     reveal_wallet_address,
 )
+from app.features.blockchain.service import chain_service
 from app.features.blockchain.encryption import normalize_private_key, private_key_hash
 
 
@@ -86,7 +87,7 @@ class AuthService:
             .first()
         )
 
-    async def register(self, user: schemas.UserCreate) -> tuple[models.User, str]:
+    async def register(self, user: schemas.UserCreate) -> tuple[models.User, str, dict]:
         existing_user = self.db.query(models.User).filter(models.User.username == user.username).first()
         if existing_user:
             raise ValueError("用户名已存在")
@@ -128,7 +129,7 @@ class AuthService:
             "suggested_username": suggested_username,
         }
 
-    async def complete_social_profile(self, payload: schemas.SocialProfileCompleteRequest) -> tuple[models.User, str]:
+    async def complete_social_profile(self, payload: schemas.SocialProfileCompleteRequest) -> tuple[models.User, str, dict]:
         provider, open_id, nickname = self._parse_social_ticket(payload.social_ticket)
 
         existing_bind = self._get_user_by_social_identity(provider, open_id)
@@ -154,7 +155,7 @@ class AuthService:
         social_provider: str | None = None,
         social_open_id: str | None = None,
         social_nickname: str | None = None,
-    ) -> tuple[models.User, str]:
+    ) -> tuple[models.User, str, dict]:
         existing_user = self.db.query(models.User).filter(models.User.username == username).first()
         if existing_user:
             raise ValueError("用户名已存在")
@@ -192,7 +193,45 @@ class AuthService:
         self.db.add(db_user)
         self.db.commit()
         self.db.refresh(db_user)
-        return db_user, generated_private_key
+        faucet_result = self._auto_fund_wallet(account.address)
+        return db_user, generated_private_key, faucet_result
+
+    @staticmethod
+    def _auto_fund_wallet(wallet_address: str) -> dict:
+        result = {
+            "faucet_enabled": bool(settings.WEB3_AUTO_FUND_NEW_USERS),
+            "faucet_status": "disabled" if not settings.WEB3_AUTO_FUND_NEW_USERS else "pending",
+            "faucet_amount_eth": settings.WEB3_AUTO_FUND_AMOUNT_ETH if settings.WEB3_AUTO_FUND_NEW_USERS else None,
+            "faucet_tx_hash": None,
+            "wallet_balance_eth": None,
+            "faucet_error": None,
+        }
+
+        if not settings.WEB3_AUTO_FUND_NEW_USERS:
+            return result
+
+        if not chain_service.rpc_connected:
+            result["faucet_status"] = "unavailable"
+            result["faucet_error"] = "Ganache RPC is not connected"
+            return result
+
+        try:
+            funding = chain_service.grant_test_eth(wallet_address, amount_eth=settings.WEB3_AUTO_FUND_AMOUNT_ETH)
+            if not funding:
+                result["faucet_status"] = "unavailable"
+                result["faucet_error"] = "Faucet transaction was not sent"
+                return result
+
+            result["faucet_status"] = "success" if funding.get("status") == 1 else "failed"
+            result["faucet_tx_hash"] = funding.get("tx_hash")
+            result["wallet_balance_eth"] = funding.get("wallet_balance_eth")
+            if result["faucet_status"] != "success":
+                result["faucet_error"] = "Faucet transaction reverted"
+            return result
+        except Exception as exc:  # noqa: BLE001
+            result["faucet_status"] = "failed"
+            result["faucet_error"] = str(exc)
+            return result
 
     @staticmethod
     def _normalize_social_provider(provider: str) -> str:

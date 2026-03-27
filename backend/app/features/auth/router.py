@@ -60,10 +60,11 @@ async def register(user: UserCreate, db: Session = Depends(get_db)):
 
     auth_service = AuthService(db)
     try:
-        db_user, generated_private_key = await auth_service.register(user)
+        db_user, generated_private_key, faucet_result = await auth_service.register(user)
         return {
             **AuthService.serialize_user_response(db_user),
             "generated_private_key": generated_private_key,
+            **(faucet_result or {}),
         }
     except ValueError as exc:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
@@ -115,7 +116,7 @@ async def social_login_init(payload: SocialLoginInitRequest, db: Session = Depen
 async def social_profile_complete(payload: SocialProfileCompleteRequest, db: Session = Depends(get_db)):
     auth_service = AuthService(db)
     try:
-        user, _generated_private_key = await auth_service.complete_social_profile(payload)
+        user, _generated_private_key, _faucet_result = await auth_service.complete_social_profile(payload)
     except ValueError as exc:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
 

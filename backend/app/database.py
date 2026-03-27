@@ -76,12 +76,21 @@ def _ensure_schema_updates() -> None:
             "is_public": "ALTER TABLE health_data_user ADD COLUMN is_public BOOLEAN NOT NULL DEFAULT 0",
             "onchain_data_id": "ALTER TABLE health_data_user ADD COLUMN onchain_data_id VARCHAR(66) NULL",
             "onchain_tx_hash": "ALTER TABLE health_data_user ADD COLUMN onchain_tx_hash VARCHAR(66) NULL",
+            "file_mime_type": "ALTER TABLE health_data_user ADD COLUMN file_mime_type VARCHAR(100) NULL",
         }
 
         with engine.begin() as conn:
             for column, sql in health_alter_sql.items():
                 if column not in health_columns:
                     conn.execute(text(sql))
+
+            if engine.dialect.name == "mysql":
+                conn.execute(
+                    text(
+                        "ALTER TABLE health_data_user "
+                        "MODIFY COLUMN file_type VARCHAR(20) NOT NULL DEFAULT 'text'"
+                    )
+                )
 
 
 def init_db() -> None:

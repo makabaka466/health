@@ -102,9 +102,19 @@
 
         <el-main class="main-content">
           <div class="content-wrapper">
-            <router-view v-slot="{ Component }">
-              <transition name="fade-slide" mode="out-in">
-                <component :is="Component" />
+            <router-view v-slot="{ Component, route: currentRoute }">
+              <keep-alive>
+                <component
+                  v-if="currentRoute.meta?.keepAlive"
+                  :is="Component"
+                  :key="currentRoute.name || currentRoute.fullPath"
+                />
+              </keep-alive>
+              <transition v-if="!currentRoute.meta?.keepAlive" name="fade-slide" mode="out-in">
+                <component
+                  :is="Component"
+                  :key="currentRoute.fullPath"
+                />
               </transition>
             </router-view>
           </div>

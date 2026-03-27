@@ -13,19 +13,13 @@
         </div>
       </div>
       <div class="header-actions">
-        <el-button v-if="hasLockedPrivateRecords" class="unlock-btn" @click="unlockPrivateData">
-          {{ unlockButtonText }}
-        </el-button>
-        <el-button v-if="unlockedPrivateKey" class="unlock-btn" @click="clearUnlockedPrivateData">
-          {{ clearUnlockText }}
-        </el-button>
         <el-button type="primary" class="add-btn" @click="openManualDialog">
           <el-icon><Plus /></el-icon>
           手动录入
         </el-button>
-        <el-button class="upload-btn" @click="openPdfDialog">
+        <el-button class="upload-btn" @click="openFileDialog">
           <el-icon><UploadFilled /></el-icon>
-          上传PDF
+          上传文件
         </el-button>
       </div>
     </div>
@@ -69,13 +63,25 @@
                       {{ formatDate(scope.row.recorded_at) }}
                     </template>
                   </el-table-column>
-                  <el-table-column prop="height" label="身高(cm)" width="100" />
-                  <el-table-column prop="weight" label="体重(kg)" width="100" />
-                  <el-table-column prop="blood_pressure" label="血压(舒/收)" width="120" />
-                  <el-table-column prop="blood_lipid" label="血脂" width="100" />
-                  <el-table-column prop="heart_rate" label="心率" width="100" />
-                  <el-table-column prop="blood_sugar" label="血糖" width="100" />
-                  <el-table-column :label="privacyColumnText" width="150">
+                  <el-table-column prop="height" label="身高(cm)" width="100">
+                    <template #default="scope">{{ displayMetric(scope.row, scope.row.height) }}</template>
+                  </el-table-column>
+                  <el-table-column prop="weight" label="体重(kg)" width="100">
+                    <template #default="scope">{{ displayMetric(scope.row, scope.row.weight) }}</template>
+                  </el-table-column>
+                  <el-table-column prop="blood_pressure" label="血压(舒/收)" width="120">
+                    <template #default="scope">{{ displayMetric(scope.row, scope.row.blood_pressure) }}</template>
+                  </el-table-column>
+                  <el-table-column prop="blood_lipid" label="血脂" width="100">
+                    <template #default="scope">{{ displayMetric(scope.row, scope.row.blood_lipid) }}</template>
+                  </el-table-column>
+                  <el-table-column prop="heart_rate" label="心率" width="100">
+                    <template #default="scope">{{ displayMetric(scope.row, scope.row.heart_rate) }}</template>
+                  </el-table-column>
+                  <el-table-column prop="blood_sugar" label="血糖" width="100">
+                    <template #default="scope">{{ displayMetric(scope.row, scope.row.blood_sugar) }}</template>
+                  </el-table-column>
+                  <el-table-column :label="privacyColumnText" width="130" fixed="right">
                     <template #default="scope">
                       <el-space :size="6" wrap>
                         <el-tag :type="scope.row.is_private ? 'warning' : 'success'" size="small">
@@ -89,34 +95,66 @@
                   </el-table-column>
                   <el-table-column label="记录类型" width="100">
                     <template #default="scope">
-                      <el-tag :type="scope.row.record_type === 'pdf' ? 'info' : 'primary'" size="small">
-                        {{ scope.row.record_type === 'pdf' ? 'PDF' : '手动' }}
+                      <el-tag :type="recordTypeTagType(scope.row.record_type)" size="small">
+                        {{ recordTypeLabel(scope.row.record_type) }}
                       </el-tag>
                     </template>
                   </el-table-column>
-                  <el-table-column label="PDF文件" width="120">
+                  <el-table-column label="附件" width="140">
                     <template #default="scope">
-                      <el-button v-if="scope.row.health_data_file" type="primary" text @click="openPdf(scope.row)">
-                        查看PDF
+                      <span v-if="scope.row.requires_private_key">{{ hiddenText }}</span>
+                      <el-button v-else-if="scope.row.health_data_file" type="primary" text @click="openAttachment(scope.row)">
+                        {{ scope.row.record_type === 'word' ? downloadWordText : viewPdfText }}
                       </el-button>
                       <span v-else>-</span>
                     </template>
                   </el-table-column>
-                  <el-table-column :label="onchainColumnText" width="140">
+                  <el-table-column :label="onchainColumnText" width="160">
                     <template #default="scope">
+                      <el-popover
+                        v-if="hasOnchainProof(scope.row)"
+                        placement="top"
+                        :width="360"
+                        trigger="hover"
+                      >
+                        <template #reference>
+                          <el-tag
+                            size="small"
+                            :type="resolveOnchainTagType(scope.row)"
+                            class="onchain-tag"
+                          >
+                            {{ resolveOnchainLabel(scope.row) }}
+                          </el-tag>
+                        </template>
+                        <div class="onchain-popover">
+                          <div class="onchain-popover__title">链上存证详情</div>
+                          <div class="onchain-popover__row">
+                            <span class="onchain-popover__label">校验结果</span>
+                            <span class="onchain-popover__value">{{ resolveOnchainTitle(scope.row) }}</span>
+                          </div>
+                          <div v-if="scope.row.onchain_tx_hash" class="onchain-popover__row">
+                            <span class="onchain-popover__label">Tx Hash</span>
+                            <span class="onchain-popover__hash">{{ scope.row.onchain_tx_hash }}</span>
+                          </div>
+                          <div v-if="scope.row.onchain_data_id" class="onchain-popover__row">
+                            <span class="onchain-popover__label">Data ID</span>
+                            <span class="onchain-popover__hash">{{ scope.row.onchain_data_id }}</span>
+                          </div>
+                        </div>
+                      </el-popover>
                       <el-tag
+                        v-else
                         size="small"
                         :type="resolveOnchainTagType(scope.row)"
-                        :title="resolveOnchainTitle(scope.row)"
                       >
                         {{ resolveOnchainLabel(scope.row) }}
                       </el-tag>
                     </template>
                   </el-table-column>
-                  <el-table-column :label="actionsColumnText">
+                  <el-table-column :label="actionsColumnText" width="140" fixed="right">
                     <template #default="scope">
-                      <el-button v-if="scope.row.requires_private_key" type="primary" text @click="unlockPrivateData">
-                        {{ unlockButtonText }}
+                      <el-button v-if="scope.row.requires_private_key" type="primary" text @click="viewPrivateRecord(scope.row)">
+                        {{ scope.row.record_type === 'manual' ? revealDataText : revealAttachmentText }}
                       </el-button>
                       <el-button type="text" @click="editRecord(scope.row)">
                         {{ scope.row.record_type === 'pdf' ? replacePdfText : editText }}
@@ -250,29 +288,29 @@
           />
         </el-form-item>
 
-        <el-form-item label="健康数据PDF">
+        <el-form-item :label="fileUploadLabel">
           <div class="upload-row">
             <el-upload
-              accept="application/pdf"
+              :accept="fileAccept"
               :show-file-list="false"
               :auto-upload="false"
-              :on-change="handlePdfFileChange"
+              :on-change="handleFileChange"
             >
-              <el-button type="primary" plain>上传 PDF</el-button>
+              <el-button type="primary" plain>{{ uploadButtonLabel }}</el-button>
             </el-upload>
             <el-button v-if="healthForm.health_data_file" text type="danger" @click="removeFile">
               移除文件
             </el-button>
           </div>
           <el-alert
-            title="仅支持 PDF，上传时可自由选择公开或保密"
+            :title="fileUploadAlertText"
             type="info"
             show-icon
             :closable="false"
             style="margin-top: 10px"
           />
           <div v-if="healthForm.health_data_file" class="upload-preview">
-            <el-tag type="info">{{ healthForm.health_data_file_name || '已上传PDF' }}</el-tag>
+            <el-tag type="info">{{ healthForm.health_data_file_name || defaultUploadedFileName }}</el-tag>
           </div>
         </el-form-item>
         </template>
@@ -287,12 +325,72 @@
         </span>
       </template>
     </el-dialog>
+
+    <el-dialog
+      v-model="privatePreviewDialogVisible"
+      :title="privatePreviewTitle"
+      width="640px"
+    >
+      <template v-if="privatePreviewRecord">
+        <el-descriptions :column="2" border>
+          <el-descriptions-item :label="previewRecordedAtLabel">
+            {{ formatDate(privatePreviewRecord.recorded_at) }}
+          </el-descriptions-item>
+          <el-descriptions-item :label="previewRecordTypeLabel">
+            {{ recordTypeLabel(privatePreviewRecord.record_type) }}
+          </el-descriptions-item>
+          <el-descriptions-item :label="previewHeightLabel">
+            {{ previewMetric(privatePreviewRecord.height) }}
+          </el-descriptions-item>
+          <el-descriptions-item :label="previewWeightLabel">
+            {{ previewMetric(privatePreviewRecord.weight) }}
+          </el-descriptions-item>
+          <el-descriptions-item :label="previewBloodPressureLabel">
+            {{ previewMetric(privatePreviewRecord.blood_pressure) }}
+          </el-descriptions-item>
+          <el-descriptions-item :label="previewBloodLipidLabel">
+            {{ previewMetric(privatePreviewRecord.blood_lipid) }}
+          </el-descriptions-item>
+          <el-descriptions-item :label="previewHeartRateLabel">
+            {{ previewMetric(privatePreviewRecord.heart_rate) }}
+          </el-descriptions-item>
+          <el-descriptions-item :label="previewBloodSugarLabel">
+            {{ previewMetric(privatePreviewRecord.blood_sugar) }}
+          </el-descriptions-item>
+          <el-descriptions-item :label="previewPrivacyLabel">
+            {{ privatePreviewRecord.is_private ? privateText : publicText }}
+          </el-descriptions-item>
+          <el-descriptions-item :label="previewOnchainLabel">
+            {{ resolveOnchainLabel(privatePreviewRecord) }}
+          </el-descriptions-item>
+        </el-descriptions>
+
+        <div v-if="privatePreviewRecord.other_text" class="private-preview-text">
+          <div class="private-preview-text__label">{{ previewOtherTextLabel }}</div>
+          <div class="private-preview-text__content">{{ privatePreviewRecord.other_text }}</div>
+        </div>
+
+        <div
+          v-else-if="showRawPrivateContent(privatePreviewRecord)"
+          class="private-preview-text"
+        >
+          <div class="private-preview-text__label">{{ previewRawContentLabel }}</div>
+          <div class="private-preview-text__content">{{ privatePreviewRecord.raw_content }}</div>
+        </div>
+
+        <div v-if="privatePreviewRecord.health_data_file" class="private-preview-actions">
+          <el-button type="primary" @click="openUnlockedAttachment(privatePreviewRecord)">
+            {{ previewAttachmentText }}
+          </el-button>
+        </div>
+      </template>
+    </el-dialog>
   </div>
 </template>
 
 <script setup>
-import { ref, computed, onMounted } from 'vue'
-import { ElMessage, ElMessageBox } from 'element-plus'
+import { ref, computed, onMounted, onActivated } from 'vue'
+import { ElMessage } from 'element-plus'
 import { healthApi } from '../api/health'
 
 const healthRecords = ref([])
@@ -303,7 +401,8 @@ const isEditing = ref(false)
 const formMode = ref('manual')
 const saving = ref(false)
 const healthFormRef = ref()
-const unlockedPrivateKey = ref('')
+const privatePreviewDialogVisible = ref(false)
+const privatePreviewRecord = ref(null)
 
 const healthForm = ref({
   weight: null,
@@ -320,35 +419,59 @@ const healthForm = ref({
   recorded_at: new Date()
 })
 
-const unlockButtonText = '\u89e3\u9501\u79c1\u5bc6\u6570\u636e'
-const clearUnlockText = '\u6e05\u9664\u89e3\u9501'
-const unlockSuccessText = '\u5df2\u89e3\u9501\u79c1\u5bc6\u5065\u5eb7\u6570\u636e'
-const unlockRequiredText = '\u8bf7\u8f93\u5165\u6ce8\u518c\u65f6\u4fdd\u5b58\u7684\u79c1\u94a5\u4ee5\u89e3\u9501\u79c1\u5bc6\u6570\u636e'
-const unlockDialogTitle = '\u89e3\u9501\u79c1\u5bc6\u6570\u636e'
-const unlockPlaceholder = '\u8bf7\u8f93\u5165 0x \u5f00\u5934\u7684\u79c1\u94a5'
-const unlockCanceledText = '\u5df2\u53d6\u6d88\u89e3\u9501'
-const lockedRecordText = '\u8be5\u8bb0\u5f55\u4e3a\u79c1\u5bc6\u6570\u636e\uff0c\u9700\u5148\u89e3\u9501'
-const unlockClearedText = '\u5df2\u6e05\u9664\u79c1\u94a5\u89e3\u9501\u72b6\u6001'
-const unlockInvalidText = '\u79c1\u94a5\u65e0\u6548\uff0c\u5df2\u6e05\u9664\u89e3\u9501\u72b6\u6001'
+const unlockSuccessText = '\u5df2\u81ea\u52a8\u89e3\u9501\u79c1\u5bc6\u5065\u5eb7\u6570\u636e'
+const lockedRecordText = '\u8be5\u8bb0\u5f55\u4e3a\u4fdd\u5bc6\u6570\u636e\uff0c\u6b63\u5728\u5c1d\u8bd5\u4f7f\u7528\u5f53\u524d\u7528\u6237\u5bc6\u94a5\u81ea\u52a8\u89e3\u9501'
+const unlockUnavailableText = '\u5f53\u524d\u8d26\u53f7\u7f3a\u5c11\u53ef\u7528\u5bc6\u94a5\uff0c\u65e0\u6cd5\u81ea\u52a8\u89e3\u9501\u79c1\u5bc6\u5065\u5eb7\u6570\u636e'
 const lockedTagText = '\u672a\u89e3\u9501'
+const hiddenText = '\u5df2\u9690\u85cf'
 const privacyColumnText = '\u9690\u79c1'
 const privateText = '\u4fdd\u5bc6'
 const publicText = '\u516c\u5f00'
 const actionsColumnText = '\u64cd\u4f5c'
+const revealDataText = '\u5c55\u793a\u6570\u636e'
+const revealAttachmentText = '\u5c55\u793a\u6587\u6863'
+const privatePreviewTitle = '\u79c1\u5bc6\u5065\u5eb7\u6570\u636e'
+const previewAttachmentText = '\u67e5\u770b\u9644\u4ef6'
+const previewRecordedAtLabel = '\u8bb0\u5f55\u65f6\u95f4'
+const previewRecordTypeLabel = '\u8bb0\u5f55\u7c7b\u578b'
+const previewHeightLabel = '\u8eab\u9ad8(cm)'
+const previewWeightLabel = '\u4f53\u91cd(kg)'
+const previewBloodPressureLabel = '\u8840\u538b'
+const previewBloodLipidLabel = '\u8840\u8102'
+const previewHeartRateLabel = '\u5fc3\u7387'
+const previewBloodSugarLabel = '\u8840\u7cd6'
+const previewPrivacyLabel = '\u9690\u79c1\u72b6\u6001'
+const previewOnchainLabel = '\u94fe\u4e0a\u4fe1\u606f'
+const previewOtherTextLabel = '\u8865\u5145\u8bf4\u660e'
+const previewRawContentLabel = '\u539f\u59cb\u6570\u636e'
+const privateViewFailedText = '\u67e5\u770b\u79c1\u5bc6\u6570\u636e\u5931\u8d25'
 const editText = '\u7f16\u8f91'
 const replacePdfText = '\u7f16\u8f91'
 const deleteText = '\u5220\u9664'
+const viewPdfText = '\u67e5\u770bPDF'
+const downloadWordText = '\u4e0b\u8f7dWord'
 const onchainColumnText = '\u94fe\u4e0a\u9a8c\u771f'
 const onchainVerifiedText = '\u5df2\u9a8c\u771f'
 const onchainMismatchText = '\u5f02\u5e38'
 const onchainPendingText = '\u5f85\u9a8c\u771f'
 const onchainUnavailableText = '\u672a\u5b58\u8bc1'
+const onchainUnlockRequiredText = '\u5f85\u89e3\u9501\u9a8c\u771f'
+const onchainServiceUnavailableText = '\u670d\u52a1\u672a\u542f\u7528'
+const onchainRecordMissingText = '\u94fe\u4e0a\u8bb0\u5f55\u7f3a\u5931'
+const onchainFailedText = '\u9a8c\u771f\u5931\u8d25'
 const loadFailedText = '\u52a0\u8f7d\u5065\u5eb7\u6570\u636e\u5931\u8d25'
 const analysisSuccessText = '\u5065\u5eb7\u5206\u6790\u5b8c\u6210'
 const analysisFailedText = '\u5065\u5eb7\u5206\u6790\u5931\u8d25'
 
-const requestParams = computed(() => (
-  unlockedPrivateKey.value ? { private_key: unlockedPrivateKey.value } : {}
+const fileAccept = computed(() => (
+  '.pdf,.doc,.docx,application/pdf,application/msword,application/vnd.openxmlformats-officedocument.wordprocessingml.document'
+))
+
+const fileUploadLabel = computed(() => '健康数据文件')
+const uploadButtonLabel = computed(() => '上传文件')
+const fileUploadAlertText = computed(() => '支持 PDF / Word（.doc/.docx），上传时可自由选择公开或保密')
+const defaultUploadedFileName = computed(() => (
+  healthForm.value.record_type === 'word' ? '已上传Word' : '已上传PDF'
 ))
 
 const healthRules = {
@@ -414,7 +537,7 @@ const parseDataContent = (content) => {
 const toViewRecord = (record) => {
   const parsed = parseDataContent(record.data_content)
   const metrics = parsed.metrics || {}
-  const fileType = record.file_type === 'pdf' ? 'pdf' : 'manual'
+  const fileType = record.file_type === 'pdf' ? 'pdf' : (record.file_type === 'word' ? 'word' : 'manual')
   const bloodPressure = metrics.blood_pressure || (
     metrics.blood_pressure_diastolic != null && metrics.blood_pressure_systolic != null
       ? `${metrics.blood_pressure_diastolic}/${metrics.blood_pressure_systolic}`
@@ -425,12 +548,17 @@ const toViewRecord = (record) => {
     record_type: fileType,
     is_private: !record.is_public,
     requires_private_key: !!record.requires_private_key,
+    raw_content: record.data_content || '',
+    onchain_verification_status: record.onchain_verification_status || '',
     onchain_data_id: record.onchain_data_id || '',
     onchain_tx_hash: record.onchain_tx_hash || '',
     onchain_verified: typeof record.onchain_verified === 'boolean' ? record.onchain_verified : null,
     onchain_verification_message: record.onchain_verification_message || '',
+    file_mime_type: record.file_mime_type || '',
     health_data_file: record.pdf_data_base64 || null,
-    health_data_file_name: fileType === 'pdf' ? (record.data_title || '健康数据PDF') : null,
+    health_data_file_name: fileType === 'manual'
+      ? null
+      : (record.data_title || (fileType === 'word' ? '健康数据Word' : '健康数据PDF')),
     recorded_at: record.created_at,
     weight: metrics.weight ?? null,
     height: metrics.height ?? null,
@@ -442,23 +570,98 @@ const toViewRecord = (record) => {
   }
 }
 
+const displayMetric = (record, value) => {
+  if (record.requires_private_key) return hiddenText
+  if (value === null || value === undefined || value === '') return '-'
+  return value
+}
+
+const previewMetric = (value) => {
+  if (value === null || value === undefined || value === '') return '-'
+  return value
+}
+
+const isAttachmentRecord = (record) => ['pdf', 'word'].includes(record?.record_type)
+
+const showRawPrivateContent = (record) => {
+  if (!record?.raw_content) return false
+  const hasStructuredMetrics = [
+    record.height,
+    record.weight,
+    record.blood_pressure,
+    record.blood_lipid,
+    record.heart_rate,
+    record.blood_sugar
+  ].some((item) => item !== null && item !== undefined && item !== '')
+  return !hasStructuredMetrics && !record.other_text
+}
+
+const recordTypeLabel = (recordType) => {
+  if (recordType === 'pdf') return 'PDF'
+  if (recordType === 'word') return 'Word'
+  return '手动'
+}
+
+const recordTypeTagType = (recordType) => {
+  if (recordType === 'pdf') return 'info'
+  if (recordType === 'word') return 'warning'
+  return 'primary'
+}
+
 const resolveOnchainLabel = (record) => {
-  if (!record.onchain_data_id) return onchainUnavailableText
-  if (record.onchain_verified === true) return onchainVerifiedText
-  if (record.onchain_verified === false) return onchainMismatchText
-  return onchainPendingText
+  switch (record.onchain_verification_status) {
+    case 'verified':
+      return onchainVerifiedText
+    case 'mismatch':
+      return onchainMismatchText
+    case 'no_proof':
+      return onchainUnavailableText
+    case 'locked':
+      return onchainUnlockRequiredText
+    case 'service_unavailable':
+      return onchainServiceUnavailableText
+    case 'record_missing':
+      return onchainRecordMissingText
+    case 'source_empty':
+    case 'hash_failed':
+    case 'query_failed':
+      return onchainFailedText
+    default:
+      if (!record.onchain_data_id) return onchainUnavailableText
+      if (record.onchain_verified === true) return onchainVerifiedText
+      if (record.onchain_verified === false) return onchainMismatchText
+      return onchainPendingText
+  }
 }
 
 const resolveOnchainTagType = (record) => {
-  if (!record.onchain_data_id) return 'info'
-  if (record.onchain_verified === true) return 'success'
-  if (record.onchain_verified === false) return 'danger'
-  return 'warning'
+  switch (record.onchain_verification_status) {
+    case 'verified':
+      return 'success'
+    case 'mismatch':
+    case 'record_missing':
+    case 'source_empty':
+    case 'hash_failed':
+    case 'query_failed':
+      return 'danger'
+    case 'locked':
+    case 'service_unavailable':
+      return 'warning'
+    case 'no_proof':
+      return 'info'
+    default:
+      if (!record.onchain_data_id) return 'info'
+      if (record.onchain_verified === true) return 'success'
+      if (record.onchain_verified === false) return 'danger'
+      return 'warning'
+  }
 }
 
 const resolveOnchainTitle = (record) => {
   return record.onchain_verification_message || onchainUnavailableText
 }
+
+const hasOnchainProof = (record) => Boolean(record.onchain_data_id || record.onchain_tx_hash)
 
 const statsCards = computed(() => {
   const averageHeartRate = healthSummary.value.average_heart_rate
@@ -469,7 +672,7 @@ const statsCards = computed(() => {
       unit: '条',
       icon: 'TrendCharts',
       color: '#2f6fd6',
-      desc: `手动 ${manualRecords.value} / PDF ${pdfRecords.value}`
+      desc: `手动 ${manualRecords.value} / PDF ${pdfRecords.value} / Word ${wordRecords.value}`
     },
     {
       title: '本月记录',
@@ -500,64 +703,15 @@ const statsCards = computed(() => {
 
 const totalRecords = computed(() => healthRecords.value.length)
 const pdfRecords = computed(() => healthRecords.value.filter((item) => item.record_type === 'pdf').length)
-const manualRecords = computed(() => healthRecords.value.filter((item) => item.record_type !== 'pdf').length)
+const wordRecords = computed(() => healthRecords.value.filter((item) => item.record_type === 'word').length)
+const manualRecords = computed(() => healthRecords.value.filter((item) => item.record_type === 'manual').length)
 const privateRecords = computed(() => healthRecords.value.filter((item) => item.is_private).length)
 const publicRecords = computed(() => healthRecords.value.filter((item) => !item.is_private).length)
-const hasLockedPrivateRecords = computed(() => healthRecords.value.some((item) => item.requires_private_key))
 const latestRecordDate = computed(() => {
   if (!healthRecords.value.length) return '-'
   return formatDate(healthRecords.value[0].recorded_at)
 })
 const latestRecordLabel = computed(() => (healthRecords.value.length ? '已同步最近记录' : '暂无记录'))
-
-const requestPrivateKey = async () => {
-  try {
-    const { value } = await ElMessageBox.prompt(unlockRequiredText, unlockDialogTitle, {
-      confirmButtonText: '\u786e\u5b9a',
-      cancelButtonText: '\u53d6\u6d88',
-      inputPlaceholder: unlockPlaceholder,
-      inputValidator: (inputValue) => {
-        if (!inputValue || !inputValue.trim()) {
-          return unlockRequiredText
-        }
-        return true
-      }
-    })
-    return value?.trim() || ''
-  } catch {
-    ElMessage.info(unlockCanceledText)
-    return ''
-  }
-}
-
-const ensureUnlockedPrivateData = async () => {
-  if (unlockedPrivateKey.value) {
-    return unlockedPrivateKey.value
-  }
-
-  const privateKey = await requestPrivateKey()
-  if (!privateKey) {
-    return ''
-  }
-
-  unlockedPrivateKey.value = privateKey
-  ElMessage.success(unlockSuccessText)
-  return privateKey
-}
-
-const clearUnlockedPrivateData = () => {
-  unlockedPrivateKey.value = ''
-  ElMessage.success(unlockClearedText)
-  loadHealthData()
-}
-
-const unlockPrivateData = async () => {
-  const privateKey = await ensureUnlockedPrivateData()
-  if (!privateKey) {
-    return
-  }
-  await loadHealthData()
-}
 
 const openManualDialog = () => {
   formMode.value = 'manual'
@@ -579,8 +733,8 @@ const openManualDialog = () => {
   dialogVisible.value = true
 }
 
-const openPdfDialog = () => {
-  formMode.value = 'pdf'
+const openFileDialog = () => {
+  formMode.value = 'file'
   isEditing.value = false
   healthForm.value = {
     weight: null,
@@ -599,14 +753,39 @@ const openPdfDialog = () => {
   dialogVisible.value = true
 }
 
+const fetchUnlockedRecord = async (record) => {
+  try {
+    const recordData = await healthApi.getRecord(record.id)
+    const viewRecord = toViewRecord(recordData)
+    if (viewRecord.requires_private_key) {
+      ElMessage.error(unlockUnavailableText)
+      return null
+    }
+    return viewRecord
+  } catch (error) {
+    ElMessage.error(extractErrorDetail(error, privateViewFailedText))
+    return null
+  }
+}
+
+const viewPrivateRecord = async (record) => {
+  const unlockedRecord = await fetchUnlockedRecord(record)
+  if (!unlockedRecord) return
+
+  if (isAttachmentRecord(unlockedRecord)) {
+    openUnlockedAttachment(unlockedRecord)
+    ElMessage.success(unlockSuccessText)
+    return
+  }
+
+  privatePreviewRecord.value = unlockedRecord
+  privatePreviewDialogVisible.value = true
+  ElMessage.success(unlockSuccessText)
+}
+
 const editRecord = async (record) => {
   if (record.requires_private_key) {
-    const privateKey = await ensureUnlockedPrivateData()
-    if (!privateKey) {
-      return
-    }
-    await loadHealthData()
-    const unlockedRecord = healthRecords.value.find((item) => item.id === record.id)
+    const unlockedRecord = await fetchUnlockedRecord(record)
     if (!unlockedRecord) {
       return
     }
@@ -620,7 +799,7 @@ const editRecord = async (record) => {
       ? `${metrics.blood_pressure_diastolic}/${metrics.blood_pressure_systolic}`
       : ''
   )
-  formMode.value = record.record_type === 'pdf' ? 'pdf' : 'manual'
+  formMode.value = record.record_type === 'manual' ? 'manual' : 'file'
   isEditing.value = true
   healthForm.value = {
     ...record,
@@ -640,24 +819,39 @@ const editRecord = async (record) => {
   dialogVisible.value = true
 }
 
-const handlePdfFileChange = (uploadFile) => {
+const handleFileChange = (uploadFile) => {
   const file = uploadFile?.raw || uploadFile
   if (!file) return
 
-  const isPdfByType = file.type === 'application/pdf'
-  const isPdfByName = file.name?.toLowerCase().endsWith('.pdf')
-  if (!isPdfByType && !isPdfByName) {
-    ElMessage.error('仅支持 PDF 文件')
+  const lowerName = file.name?.toLowerCase() || ''
+  const inferredType = (
+    file.type === 'application/msword'
+      || file.type === 'application/vnd.openxmlformats-officedocument.wordprocessingml.document'
+      || lowerName.endsWith('.doc')
+      || lowerName.endsWith('.docx')
+  )
+    ? 'word'
+    : 'pdf'
+  const isValidFile = inferredType === 'word'
+    ? file.type === 'application/msword'
+      || file.type === 'application/vnd.openxmlformats-officedocument.wordprocessingml.document'
+      || lowerName.endsWith('.doc')
+      || lowerName.endsWith('.docx')
+    : file.type === 'application/pdf' || lowerName.endsWith('.pdf')
+  if (!isValidFile) {
+    ElMessage.error('仅支持 PDF / Word 文件（.doc/.docx）')
     return
   }
 
-  if (file.size > 6 * 1024 * 1024) {
-    ElMessage.error('PDF 不能超过 6MB')
+  const maxSize = inferredType === 'word' ? 10 * 1024 * 1024 : 6 * 1024 * 1024
+  if (file.size > maxSize) {
+    ElMessage.error(inferredType === 'word' ? 'Word 不能超过 10MB' : 'PDF 不能超过 6MB')
     return
   }
 
   const reader = new FileReader()
   reader.onload = () => {
+    healthForm.value.record_type = inferredType
     healthForm.value.health_data_file = reader.result
     healthForm.value.health_data_file_name = file.name
   }
@@ -699,28 +893,24 @@ const saveHealthData = async () => {
     metrics.blood_pressure_systolic = parsedPressure.systolic
 
     const payload = {
-      data_title: formMode.value === 'pdf' ? (healthForm.value.health_data_file_name || '健康数据PDF') : '手动健康记录',
-      file_type: formMode.value === 'pdf' ? 'pdf' : 'text',
+      data_title: formMode.value === 'manual'
+        ? '手动健康记录'
+        : (healthForm.value.health_data_file_name || (healthForm.value.record_type === 'word' ? '健康数据Word' : '健康数据PDF')),
+      file_type: formMode.value === 'manual' ? 'text' : healthForm.value.record_type,
       is_public: !healthForm.value.is_private,
-      data_content: formMode.value === 'pdf'
-        ? null
-        : JSON.stringify({ metrics, other_text: healthForm.value.other_text || '' }),
-      pdf_data_base64: formMode.value === 'pdf' ? healthForm.value.health_data_file : null
+      data_content: formMode.value === 'manual'
+        ? JSON.stringify({ metrics, other_text: healthForm.value.other_text || '' })
+        : null,
+      pdf_data_base64: formMode.value === 'manual' ? null : healthForm.value.health_data_file
     }
 
-    if (formMode.value === 'pdf') {
+    if (formMode.value !== 'manual') {
       if (!payload.pdf_data_base64) {
-        ElMessage.error('请先上传PDF文件')
+        ElMessage.error('请先上传文件')
         return
       }
-
-      payload.data_content = null
     }
 
-    if (healthForm.value.is_private && unlockedPrivateKey.value) {
-      payload.private_key = unlockedPrivateKey.value
-    }
-    
     if (isEditing.value) {
       await healthApi.updateRecord(healthForm.value.id, payload)
       ElMessage.success('健康数据更新成功')
@@ -751,17 +941,12 @@ const deleteRecord = async (record) => {
 const loadHealthData = async () => {
   try {
     const [records, summary] = await Promise.all([
-      healthApi.getRecords(requestParams.value),
-      healthApi.getSummary(requestParams.value)
+      healthApi.getRecords(),
+      healthApi.getSummary()
     ])
     healthRecords.value = records.map(toViewRecord)
     healthSummary.value = summary
   } catch (error) {
-    if (unlockedPrivateKey.value && [400, 401, 403].includes(error?.response?.status)) {
-      unlockedPrivateKey.value = ''
-      ElMessage.error(unlockInvalidText)
-      return
-    }
     ElMessage.error(extractErrorDetail(error, loadFailedText))
   }
 }
@@ -769,14 +954,7 @@ const loadHealthData = async () => {
 
 const analyzeHealthData = async () => {
   try {
-    if (hasLockedPrivateRecords.value && !unlockedPrivateKey.value) {
-      const privateKey = await ensureUnlockedPrivateData()
-      if (!privateKey) {
-        return
-      }
-      await loadHealthData()
-    }
-    const analysis = await healthApi.analyzeData({}, requestParams.value)
+    const analysis = await healthApi.analyzeData({})
     healthAnalysis.value = analysis
     ElMessage.success(analysisSuccessText)
   } catch (error) {
@@ -793,26 +971,38 @@ const formatDate = (dateString) => {
   return new Date(dateString).toLocaleString('zh-CN')
 }
 
-const openPdf = async (record) => {
-  if (record.requires_private_key) {
-    ElMessage.warning(lockedRecordText)
-    const privateKey = await ensureUnlockedPrivateData()
-    if (!privateKey) {
-      return
-    }
-    await loadHealthData()
-    const unlockedRecord = healthRecords.value.find((item) => item.id === record.id)
-    if (!unlockedRecord) {
-      return
-    }
-    record = unlockedRecord
+const openUnlockedAttachment = (record) => {
+  if (!record?.health_data_file) return
+
+  if (record.record_type === 'word') {
+    const link = document.createElement('a')
+    link.href = record.health_data_file
+    link.download = record.health_data_file_name || '????.docx'
+    link.target = '_blank'
+    link.rel = 'noopener noreferrer'
+    link.click()
+    return
   }
 
-  if (!record.health_data_file) return
   window.open(record.health_data_file, '_blank', 'noopener,noreferrer')
 }
 
+const openAttachment = async (record) => {
+  if (record.requires_private_key) {
+    ElMessage.warning(lockedRecordText)
+    const unlockedRecord = await fetchUnlockedRecord(record)
+    if (!unlockedRecord) return
+    record = unlockedRecord
+  }
+
+  openUnlockedAttachment(record)
+}
+
 onMounted(() => {
+  loadHealthData()
+})
+
+onActivated(() => {
   loadHealthData()
 })
 </script>
@@ -959,6 +1149,73 @@ onMounted(() => {
 
 .upload-preview {
   margin-top: 12px;
+}
+
+.private-preview-text {
+  margin-top: 16px;
+  padding: 14px 16px;
+  border-radius: 12px;
+  background: #f8fbff;
+  border: 1px solid #dbeafe;
+}
+
+.private-preview-text__label {
+  margin-bottom: 8px;
+  font-size: 13px;
+  font-weight: 600;
+  color: #334155;
+}
+
+.private-preview-text__content {
+  line-height: 1.7;
+  color: #475569;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+.private-preview-actions {
+  margin-top: 16px;
+  display: flex;
+  justify-content: flex-end;
+}
+
+.onchain-tag {
+  cursor: default;
+}
+
+.onchain-popover {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.onchain-popover__title {
+  font-weight: 700;
+  color: #1e293b;
+}
+
+.onchain-popover__row {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.onchain-popover__label {
+  font-size: 12px;
+  color: #64748b;
+}
+
+.onchain-popover__value {
+  font-size: 13px;
+  color: #1e293b;
+  line-height: 1.5;
+}
+
+.onchain-popover__hash {
+  font-size: 12px;
+  color: #334155;
+  word-break: break-all;
+  line-height: 1.5;
 }
 
 .placeholder-content {

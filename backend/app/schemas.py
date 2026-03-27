@@ -133,6 +133,25 @@ class AdminUserListResponse(BaseModel):
     page_size: int
 
 
+class AdminHealthRecordSummaryResponse(BaseModel):
+    id: int
+    user_id: int
+    username: str
+    file_type: str
+    is_public: bool
+    has_attachment: bool
+    is_onchain: bool
+    created_at: datetime
+    updated_at: datetime
+
+
+class AdminHealthRecordListResponse(BaseModel):
+    items: List[AdminHealthRecordSummaryResponse]
+    total: int
+    page: int
+    page_size: int
+
+
 ARTICLE_CATEGORIES = [
     "慢性病管理",
     "饮食营养",
@@ -243,6 +262,12 @@ class SocialProfileCompleteRequest(BaseModel):
 
 class UserRegisterResponse(UserResponse):
     generated_private_key: Optional[str] = None
+    faucet_enabled: bool = False
+    faucet_status: Optional[str] = None
+    faucet_amount_eth: Optional[str] = None
+    faucet_tx_hash: Optional[str] = None
+    wallet_balance_eth: Optional[str] = None
+    faucet_error: Optional[str] = None
 
 
 class UserProfileUpsertRequest(BaseModel):
@@ -283,7 +308,9 @@ class HealthDataUpdate(HealthDataBase):
 class HealthDataResponse(HealthDataBase):
     id: int
     user_id: int
+    file_mime_type: Optional[str] = None
     requires_private_key: bool = False
+    onchain_verification_status: Optional[str] = None
     onchain_data_id: Optional[str] = None
     onchain_tx_hash: Optional[str] = None
     onchain_verified: Optional[bool] = None

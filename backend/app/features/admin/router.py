@@ -4,7 +4,7 @@ from sqlalchemy.orm import Session
 from app.database import get_db
 from app.features.admin.service import AdminSystemService
 from app.features.auth.dependencies import get_current_admin
-from app.schemas import AdminSystemLogResponse, AdminSystemSettings
+from app.schemas import AdminHealthRecordListResponse, AdminSystemLogResponse, AdminSystemSettings
 
 
 router = APIRouter()
@@ -54,3 +54,29 @@ async def list_admin_system_logs(
     )
     db.commit()
     return service.list_logs(limit=limit, module=module)
+
+
+@router.get("/health-records", response_model=AdminHealthRecordListResponse)
+async def list_admin_health_records(
+    page: int = Query(1, ge=1),
+    page_size: int = Query(20, ge=1, le=100),
+    keyword: str | None = Query(None),
+    file_type: str | None = Query(None),
+    db: Session = Depends(get_db),
+    current_admin=Depends(get_current_admin),
+):
+    service = AdminSystemService(db)
+    service.log(
+        level="INFO",
+        module="health_records",
+        action="view",
+        message="管理员查看健康数据上传记录总览",
+        operator_id=current_admin.id,
+    )
+    db.commit()
+    return service.list_health_records(
+        page=page,
+        page_size=page_size,
+        keyword=keyword,
+        file_type=file_type,
+    )

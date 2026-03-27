@@ -26,39 +26,82 @@ from app.features.blockchain.encryption import (
 
 router = APIRouter()
 
+PDF_MIME_TYPES = {"application/pdf", "application/octet-stream"}
+WORD_MIME_TYPES = {
+    "application/msword",
+    "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+    "application/octet-stream",
+}
+UPLOAD_SIZE_LIMITS = {
+    "pdf": 6 * 1024 * 1024,
+    "word": 10 * 1024 * 1024,
+}
+
 
 def _invalidate_home_advice_if_needed(db: Session, user: models.User, should_refresh: bool) -> None:
     if should_refresh:
         invalidate_user_home_advice(db, user)
 
 
-def _decode_pdf_data(pdf_data_base64: Optional[str]) -> tuple[Optional[bytes], Optional[int], Optional[str]]:
-    if not pdf_data_base64:
+def _normalized_file_type(file_type: Optional[str]) -> str:
+    normalized = (file_type or "text").strip().lower()
+    return normalized if normalized in {"text", "pdf", "word"} else "text"
+
+
+def _default_mime_type(file_type: str) -> Optional[str]:
+    if file_type == "pdf":
+        return "application/pdf"
+    if file_type == "word":
+        return "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+    return None
+
+
+def _decode_upload_data(file_type: str, file_data_base64: Optional[str]) -> tuple[Optional[bytes], Optional[int], Optional[str]]:
+    if file_type == "text":
         return None, None, None
 
-    raw_value = pdf_data_base64.strip()
+    if not file_data_base64:
+        return None, None, None
+
+    raw_value = file_data_base64.strip()
     if not raw_value:
         return None, None, None
 
+    detected_mime_type = _default_mime_type(file_type)
     if "," in raw_value:
         prefix, encoded_value = raw_value.split(",", 1)
-        if "application/pdf" not in prefix and "application/octet-stream" not in prefix:
-            raise HTTPException(status_code=400, detail="仅支持 PDF 格式文件")
+        mime_type = prefix.split(":", 1)[-1].split(";", 1)[0].strip().lower() if ":" in prefix else ""
+        allowed_mime_types = PDF_MIME_TYPES if file_type == "pdf" else WORD_MIME_TYPES
+        if mime_type and mime_type not in allowed_mime_types:
+            if file_type == "pdf":
+                raise HTTPException(status_code=400, detail="仅支持 PDF 格式文件")
+            raise HTTPException(status_code=400, detail="仅支持 Word 格式文件（.doc/.docx）")
+        detected_mime_type = _default_mime_type(file_type) if mime_type == "application/octet-stream" else (mime_type or detected_mime_type)
     else:
         encoded_value = raw_value
 
     try:
         decoded = base64.b64decode(encoded_value, validate=True)
     except Exception as exc:  # noqa: BLE001
-        raise HTTPException(status_code=400, detail="PDF 文件内容非法") from exc
+        if file_type == "pdf":
+            raise HTTPException(status_code=400, detail="PDF 文件内容非法") from exc
+        raise HTTPException(status_code=400, detail="Word 文件内容非法") from exc
 
-    if not decoded.startswith(b"%PDF"):
+    if file_type == "pdf" and not decoded.startswith(b"%PDF"):
         raise HTTPException(status_code=400, detail="仅支持 PDF 格式文件")
+    if file_type == "word":
+        is_doc = decoded.startswith(bytes.fromhex("D0CF11E0A1B11AE1"))
+        is_docx = decoded.startswith(b"PK")
+        if not (is_doc or is_docx):
+            raise HTTPException(status_code=400, detail="仅支持 Word 格式文件（.doc/.docx）")
 
-    if len(decoded) > 6 * 1024 * 1024:
-        raise HTTPException(status_code=400, detail="PDF 文件过大，请压缩后再上传")
+    size_limit = UPLOAD_SIZE_LIMITS.get(file_type, 6 * 1024 * 1024)
+    if len(decoded) > size_limit:
+        if file_type == "pdf":
+            raise HTTPException(status_code=400, detail="PDF 文件过大，请压缩后再上传")
+        raise HTTPException(status_code=400, detail="Word 文件过大，请压缩后再上传")
 
-    return decoded, len(decoded), f"data:application/pdf;base64,{encoded_value}"
+    return decoded, len(decoded), detected_mime_type or _default_mime_type(file_type)
 
 
 def _extract_metrics(content: Optional[str]) -> dict:
@@ -72,16 +115,22 @@ def _extract_metrics(content: Optional[str]) -> dict:
 
 
 def _resolve_effective_private_key(user: models.User, private_key: Optional[str]) -> tuple[Optional[str], Optional[str]]:
-    real_wallet_address = AuthService.get_user_wallet_address(user)
-    if private_key:
-        if not verify_user_private_key(private_key, real_wallet_address, user.private_key_hash):
-            raise HTTPException(status_code=403, detail="私钥校验失败")
-        normalized_key = normalize_private_key(private_key)
-        return normalized_key, normalized_key
+    explicit_private_key = _validate_explicit_private_key(user, private_key)
+    if explicit_private_key:
+        return explicit_private_key, explicit_private_key
 
-    if user.private_key_hash:
-        # 当前用户身份已通过 JWT 鉴权时，允许自动使用其密钥哈希派生的内部密钥处理私密数据。
-        return normalize_private_key(user.private_key_hash), None
+    if user.encrypted_private_key:
+        try:
+            resolved_private_key = normalize_private_key(
+                AuthService.decrypt_private_key_from_storage(user.encrypted_private_key)
+            )
+            return resolved_private_key, resolved_private_key
+        except ValueError:
+            pass
+
+    legacy_private_key = _legacy_private_storage_key(user)
+    if legacy_private_key:
+        return legacy_private_key, None
 
     return None, None
 
@@ -91,7 +140,7 @@ def _validate_explicit_private_key(user: models.User, private_key: Optional[str]
         return None
     real_wallet_address = AuthService.get_user_wallet_address(user)
     if not verify_user_private_key(private_key, real_wallet_address, user.private_key_hash):
-        raise HTTPException(status_code=403, detail="绉侀挜鏍￠獙澶辫触")
+        raise HTTPException(status_code=403, detail="私钥校验失败")
     return normalize_private_key(private_key)
 
 
@@ -103,13 +152,15 @@ def _build_source_payload(
     file_type: str,
     *,
     data_content: Optional[str] = None,
-    pdf_bytes: Optional[bytes] = None,
+    file_bytes: Optional[bytes] = None,
+    file_mime_type: Optional[str] = None,
 ) -> str:
-    if file_type == "pdf":
-        if not pdf_bytes:
+    if file_type in {"pdf", "word"}:
+        if not file_bytes:
             return ""
-        encoded = base64.b64encode(pdf_bytes).decode("utf-8")
-        return f"data:application/pdf;base64,{encoded}"
+        encoded = base64.b64encode(file_bytes).decode("utf-8")
+        mime_type = file_mime_type or _default_mime_type(file_type) or "application/octet-stream"
+        return f"data:{mime_type};base64,{encoded}"
     return data_content or ""
 
 
@@ -130,65 +181,101 @@ def _resolve_chain_private_key(user: models.User, explicit_private_key: Optional
         return None
 
 
+def _legacy_private_storage_key(user: Optional[models.User]) -> Optional[str]:
+    if not user or not getattr(user, "private_key_hash", None):
+        return None
+    try:
+        return normalize_private_key(user.private_key_hash)
+    except ValueError:
+        return None
+
+
 def _resolve_record_values(
     record: models.HealthData,
     private_key: Optional[str] = None,
     *,
     source_is_public: Optional[bool] = None,
+    current_user: Optional[models.User] = None,
 ) -> tuple[Optional[str], Optional[bytes], bool]:
     is_public = record.is_public if source_is_public is None else source_is_public
-    requires_private_key = bool(not is_public and (record.encrypted_data_content or record.encrypted_pdf_data))
     data_content = record.data_content
-    pdf_bytes = record.pdf_data
-    storage_key = _public_storage_key() if is_public else private_key
+    file_bytes = record.pdf_data
 
-    if (record.encrypted_data_content or record.encrypted_pdf_data) and storage_key:
+    if not is_public:
+        if not private_key:
+            return None, None, True
+
+        candidate_keys = [private_key]
+        legacy_storage_key = _legacy_private_storage_key(current_user)
+        if legacy_storage_key and legacy_storage_key not in candidate_keys:
+            candidate_keys.append(legacy_storage_key)
+
+        for candidate_key in candidate_keys:
+            resolved_content = data_content
+            resolved_file_bytes = file_bytes
+
+            try:
+                if record.encrypted_data_content:
+                    resolved_content = decrypt_text(record.encrypted_data_content, candidate_key)
+                if record.encrypted_pdf_data:
+                    resolved_file_bytes = decrypt_binary(record.encrypted_pdf_data, candidate_key)
+                return resolved_content, resolved_file_bytes, False
+            except ValueError:
+                continue
+
+        return None, None, True
+
+    storage_key = _public_storage_key()
+    if record.encrypted_data_content or record.encrypted_pdf_data:
         try:
             if record.encrypted_data_content:
                 data_content = decrypt_text(record.encrypted_data_content, storage_key)
             if record.encrypted_pdf_data:
-                pdf_bytes = decrypt_binary(record.encrypted_pdf_data, storage_key)
-            requires_private_key = False
+                file_bytes = decrypt_binary(record.encrypted_pdf_data, storage_key)
         except ValueError:
-            if not is_public:
-                requires_private_key = True
+            pass
 
-    return data_content, pdf_bytes, requires_private_key
+    return data_content, file_bytes, False
 
 
 def _verify_record_onchain(
     record: models.HealthData,
     *,
     data_content: Optional[str],
-    pdf_bytes: Optional[bytes],
-) -> tuple[Optional[bool], Optional[str]]:
+    file_bytes: Optional[bytes],
+) -> tuple[Optional[str], Optional[bool], Optional[str]]:
     if not record.onchain_data_id:
-        return None, "?????"
+        return "no_proof", None, "未生成链上存证"
     if not chain_service.enabled:
-        return None, "?????????"
+        return "service_unavailable", None, "区块链服务未启用，暂时无法校验"
 
-    source_payload = _build_source_payload(record.file_type, data_content=data_content, pdf_bytes=pdf_bytes)
+    source_payload = _build_source_payload(
+        record.file_type,
+        data_content=data_content,
+        file_bytes=file_bytes,
+        file_mime_type=record.file_mime_type,
+    )
     if not source_payload:
         if not record.is_public:
-            return None, "????????????????"
-        return None, "???????????"
+            return "locked", None, "私密数据未解锁，暂时无法完成链上校验"
+        return "source_empty", None, "原始数据为空，无法完成链上校验"
 
     expected_hash = _hash_payload(source_payload)
     if not expected_hash:
-        return None, "???????????"
+        return "hash_failed", None, "数据摘要生成失败，无法完成链上校验"
 
     try:
         chain_record = chain_service.get_health_record(data_id_hex=record.onchain_data_id)
     except Exception as exc:  # noqa: BLE001
-        return None, f"???????{exc}"
+        return "query_failed", None, f"链上校验失败：{exc}"
 
     if not chain_record:
-        return False, "???????????"
+        return "record_missing", False, "未找到对应的链上记录"
 
     chain_hash = (chain_record.get("data_hash") or "").lower()
     if chain_hash == expected_hash.lower():
-        return True, "????????"
-    return False, "?????????????????????????"
+        return "verified", True, "链上哈希匹配，数据未被篡改"
+    return "mismatch", False, "链上哈希与当前数据不一致，数据可能已被修改或尚未同步到链上"
 
 
 def _serialize_record(
@@ -196,16 +283,21 @@ def _serialize_record(
     private_key: Optional[str] = None,
     current_user: Optional[models.User] = None,
 ) -> dict:
-    data_content, pdf_bytes, requires_private_key = _resolve_record_values(record, private_key)
-    onchain_verified, onchain_verification_message = _verify_record_onchain(
+    data_content, file_bytes, requires_private_key = _resolve_record_values(
+        record,
+        private_key,
+        current_user=current_user,
+    )
+    onchain_verification_status, onchain_verified, onchain_verification_message = _verify_record_onchain(
         record,
         data_content=data_content,
-        pdf_bytes=pdf_bytes,
+        file_bytes=file_bytes,
     )
 
     pdf_data_base64 = None
-    if pdf_bytes:
-        pdf_data_base64 = "data:application/pdf;base64," + base64.b64encode(pdf_bytes).decode("utf-8")
+    if file_bytes:
+        mime_type = record.file_mime_type or _default_mime_type(record.file_type) or "application/octet-stream"
+        pdf_data_base64 = f"data:{mime_type};base64," + base64.b64encode(file_bytes).decode("utf-8")
 
     return {
         "id": record.id,
@@ -213,10 +305,12 @@ def _serialize_record(
         "data_title": record.data_title,
         "data_content": data_content,
         "file_type": record.file_type,
+        "file_mime_type": record.file_mime_type,
         "pdf_size": record.pdf_size,
         "pdf_data_base64": pdf_data_base64,
         "is_public": record.is_public,
         "requires_private_key": requires_private_key,
+        "onchain_verification_status": onchain_verification_status,
         "onchain_data_id": record.onchain_data_id,
         "onchain_tx_hash": record.onchain_tx_hash,
         "onchain_verified": onchain_verified,
@@ -233,21 +327,19 @@ async def create_health_record(
     current_user: models.User = Depends(get_current_user)
 ):
     """Create a health data record."""
-    file_type = "pdf" if health_data.file_type == "pdf" else "text"
-    pdf_data, pdf_size, _ = _decode_pdf_data(health_data.pdf_data_base64 if file_type == "pdf" else None)
+    file_type = _normalized_file_type(health_data.file_type)
+    file_bytes, file_size, file_mime_type = _decode_upload_data(file_type, health_data.pdf_data_base64)
     is_public = bool(health_data.is_public)
-    effective_private_key, _ = _resolve_effective_private_key(current_user, health_data.private_key)
-    explicit_private_key = _validate_explicit_private_key(current_user, health_data.private_key)
+    effective_private_key, chain_private_key = _resolve_effective_private_key(current_user, health_data.private_key)
     if not is_public and not effective_private_key:
         raise HTTPException(status_code=400, detail="当前账号缺少可用私钥，无法保存私密健康数据")
 
-    if file_type == "pdf" and not pdf_data:
-        raise HTTPException(status_code=400, detail="请上传 PDF 文件")
+    if file_type in {"pdf", "word"} and not file_bytes:
+        raise HTTPException(status_code=400, detail="请上传文件")
     if file_type == "text" and not health_data.data_content:
         raise HTTPException(status_code=400, detail="文本健康数据不能为空")
 
     public_storage_key = _public_storage_key()
-    chain_private_key = _resolve_chain_private_key(current_user, explicit_private_key)
     data_content = None
     encrypted_data_content = None
     plain_pdf_data = None
@@ -259,11 +351,11 @@ async def create_health_record(
         elif effective_private_key:
             encrypted_data_content = encrypt_text(health_data.data_content or "", effective_private_key)
 
-    if file_type == "pdf" and pdf_data:
+    if file_type in {"pdf", "word"} and file_bytes:
         if is_public:
-            encrypted_pdf_data = encrypt_binary(pdf_data, public_storage_key)
+            encrypted_pdf_data = encrypt_binary(file_bytes, public_storage_key)
         elif effective_private_key:
-            encrypted_pdf_data = encrypt_binary(pdf_data, effective_private_key)
+            encrypted_pdf_data = encrypt_binary(file_bytes, effective_private_key)
 
     db_record = models.HealthData(
         user_id=current_user.id,
@@ -271,13 +363,19 @@ async def create_health_record(
         data_content=data_content,
         encrypted_data_content=encrypted_data_content,
         file_type=file_type,
+        file_mime_type=file_mime_type,
         pdf_data=plain_pdf_data,
         encrypted_pdf_data=encrypted_pdf_data,
-        pdf_size=pdf_size,
+        pdf_size=file_size,
         is_public=is_public,
     )
 
-    source_payload = _build_source_payload(file_type, data_content=health_data.data_content, pdf_bytes=pdf_data)
+    source_payload = _build_source_payload(
+        file_type,
+        data_content=health_data.data_content,
+        file_bytes=file_bytes,
+        file_mime_type=file_mime_type,
+    )
     data_hash_hex = _hash_payload(source_payload)
     if chain_private_key and source_payload and data_hash_hex:
         try:
@@ -320,8 +418,8 @@ async def get_health_records(
         query = query.filter(models.HealthData.created_at <= end_date)
     
     records = query.order_by(models.HealthData.created_at.desc()).offset(skip).limit(limit).all()
-    validated_key, _ = _resolve_effective_private_key(current_user, private_key)
-    return [_serialize_record(item, validated_key, current_user) for item in records]
+    effective_private_key, _ = _resolve_effective_private_key(current_user, private_key)
+    return [_serialize_record(item, effective_private_key, current_user) for item in records]
 
 
 @router.get("/records/{record_id}", response_model=schemas.HealthDataResponse)
@@ -340,8 +438,8 @@ async def get_health_record(
     if not record:
         raise HTTPException(status_code=404, detail="健康数据记录不存在")
     
-    validated_key, _ = _resolve_effective_private_key(current_user, private_key)
-    return _serialize_record(record, validated_key, current_user)
+    effective_private_key, _ = _resolve_effective_private_key(current_user, private_key)
+    return _serialize_record(record, effective_private_key, current_user)
 
 
 @router.put("/records/{record_id}", response_model=schemas.HealthDataResponse)
@@ -363,10 +461,8 @@ async def update_health_record(
     was_public = bool(record.is_public)
     update_data = health_data.model_dump(exclude_unset=True)
     input_private_key = update_data.pop("private_key", None)
-    effective_private_key, _ = _resolve_effective_private_key(current_user, input_private_key)
-    explicit_private_key = _validate_explicit_private_key(current_user, input_private_key)
+    effective_private_key, chain_private_key = _resolve_effective_private_key(current_user, input_private_key)
     public_storage_key = _public_storage_key()
-    chain_private_key = _resolve_chain_private_key(current_user, explicit_private_key)
 
     if "data_title" in update_data:
         record.data_title = update_data["data_title"]
@@ -374,7 +470,7 @@ async def update_health_record(
     if "is_public" in update_data:
         record.is_public = bool(update_data["is_public"])
 
-    target_file_type = "pdf" if update_data.get("file_type", record.file_type) == "pdf" else "text"
+    target_file_type = _normalized_file_type(update_data.get("file_type", record.file_type))
     record.file_type = target_file_type
 
     if not record.is_public and not effective_private_key:
@@ -384,28 +480,39 @@ async def update_health_record(
         record.data_content = None
         record.pdf_data = None
         record.pdf_size = None
+        record.file_mime_type = None
         record.encrypted_pdf_data = None
         if record.is_public:
             record.encrypted_data_content = encrypt_text(update_data["data_content"] or "", public_storage_key)
         else:
             record.encrypted_data_content = encrypt_text(update_data["data_content"] or "", effective_private_key)
 
-    if target_file_type == "pdf" and "pdf_data_base64" in update_data:
-        decoded_pdf, decoded_size, _ = _decode_pdf_data(update_data["pdf_data_base64"])
-        if not decoded_pdf:
-            raise HTTPException(status_code=400, detail="请上传 PDF 文件")
+    if target_file_type in {"pdf", "word"} and "pdf_data_base64" in update_data:
+        decoded_file, decoded_size, detected_mime_type = _decode_upload_data(target_file_type, update_data["pdf_data_base64"])
+        if not decoded_file:
+            raise HTTPException(status_code=400, detail="请上传文件")
 
         record.pdf_size = decoded_size
+        record.file_mime_type = detected_mime_type
         record.data_content = None
         record.encrypted_data_content = None
         record.pdf_data = None
         if record.is_public:
-            record.encrypted_pdf_data = encrypt_binary(decoded_pdf, public_storage_key)
+            record.encrypted_pdf_data = encrypt_binary(decoded_file, public_storage_key)
         else:
-            record.encrypted_pdf_data = encrypt_binary(decoded_pdf, effective_private_key)
+            record.encrypted_pdf_data = encrypt_binary(decoded_file, effective_private_key)
 
-    resolved_content, resolved_pdf_bytes, _ = _resolve_record_values(record, effective_private_key)
-    source_payload = _build_source_payload(target_file_type, data_content=resolved_content, pdf_bytes=resolved_pdf_bytes)
+    resolved_content, resolved_file_bytes, _ = _resolve_record_values(
+        record,
+        effective_private_key,
+        current_user=current_user,
+    )
+    source_payload = _build_source_payload(
+        target_file_type,
+        data_content=resolved_content,
+        file_bytes=resolved_file_bytes,
+        file_mime_type=record.file_mime_type,
+    )
     data_hash_hex = _hash_payload(source_payload)
     if chain_private_key and source_payload and data_hash_hex:
         try:
@@ -492,7 +599,7 @@ async def get_health_summary(
     current_user: models.User = Depends(get_current_user)
 ):
     """获取健康数据摘要统计"""
-    validated_key, _ = _resolve_effective_private_key(current_user, private_key)
+    effective_private_key, _ = _resolve_effective_private_key(current_user, private_key)
 
     records = db.query(models.HealthData).filter(
         models.HealthData.user_id == current_user.id
@@ -513,7 +620,7 @@ async def get_health_summary(
     weights = []
     heart_rates = []
     for item in records:
-        content, _, _ = _resolve_record_values(item, validated_key)
+        content, _, _ = _resolve_record_values(item, effective_private_key, current_user=current_user)
         metrics = _extract_metrics(content)
         if metrics.get("weight") is not None:
             weights.append(metrics.get("weight"))
@@ -542,7 +649,7 @@ async def analyze_health_data(
     current_user: models.User = Depends(get_current_user)
 ):
     """分析健康数据并提供建议"""
-    validated_key, _ = _resolve_effective_private_key(current_user, private_key)
+    effective_private_key, _ = _resolve_effective_private_key(current_user, private_key)
 
     query = db.query(models.HealthData).filter(models.HealthData.user_id == current_user.id)
 
@@ -559,7 +666,7 @@ async def analyze_health_data(
     recommendations = []
 
     latest_record = records[0]
-    latest_content, _, _ = _resolve_record_values(latest_record, validated_key)
+    latest_content, _, _ = _resolve_record_values(latest_record, effective_private_key, current_user=current_user)
     metrics = _extract_metrics(latest_content)
     systolic = metrics.get("blood_pressure_systolic")
     diastolic = metrics.get("blood_pressure_diastolic")

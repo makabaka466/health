@@ -33,6 +33,10 @@
             <el-icon><User /></el-icon>
             <template #title><span class="menu-title">{{ labels.users }}</span></template>
           </el-menu-item>
+          <el-menu-item index="/admin/health-data">
+            <el-icon><DataAnalysis /></el-icon>
+            <template #title><span class="menu-title">{{ labels.healthData }}</span></template>
+          </el-menu-item>
           <el-menu-item index="/admin/ai-chat">
             <el-icon><ChatDotRound /></el-icon>
             <template #title><span class="menu-title">{{ labels.ai }}</span></template>
@@ -121,9 +125,19 @@
 
         <el-main class="main-content">
           <div class="content-wrapper">
-            <router-view v-slot="{ Component }">
-              <transition name="fade-slide" mode="out-in">
-                <component :is="Component" />
+            <router-view v-slot="{ Component, route: currentRoute }">
+              <keep-alive>
+                <component
+                  v-if="currentRoute.meta?.keepAlive"
+                  :is="Component"
+                  :key="currentRoute.name || currentRoute.fullPath"
+                />
+              </keep-alive>
+              <transition v-if="!currentRoute.meta?.keepAlive" name="fade-slide" mode="out-in">
+                <component
+                  :is="Component"
+                  :key="currentRoute.fullPath"
+                />
               </transition>
             </router-view>
           </div>
@@ -143,6 +157,7 @@ const labels = {
   logoTitle: '\u7ba1\u7406\u540e\u53f0',
   console: '\u63a7\u5236\u53f0',
   users: '\u7528\u6237\u7ba1\u7406',
+  healthData: '\u5065\u5eb7\u8bb0\u5f55',
   ai: 'AI \u7ba1\u7406',
   knowledgeBase: '\u77e5\u8bc6\u5e93\u7ba1\u7406',
   articles: '\u6587\u7ae0\u7ba1\u7406',
@@ -175,6 +190,7 @@ const activeMenu = computed(() => route.path)
 const routeMap = {
   '/admin': labels.console,
   '/admin/users': labels.users,
+  '/admin/health-data': labels.healthData,
   '/admin/ai-chat': labels.ai,
   '/admin/knowledge-base': labels.knowledgeBase,
   '/admin/articles': labels.articles,

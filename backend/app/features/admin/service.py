@@ -3,7 +3,7 @@ import json
 from sqlalchemy.orm import Session
 
 from app import models
-from app.schemas import AdminSystemSettings
+from app.schemas import AdminHealthRecordListResponse, AdminHealthRecordSummaryResponse, AdminSystemSettings
 
 
 DEFAULT_SETTINGS = AdminSystemSettings().model_dump()
@@ -54,6 +54,57 @@ class AdminSystemService:
         if module:
             query = query.filter(models.SystemLog.module == module)
         return query.order_by(models.SystemLog.created_at.desc()).limit(limit).all()
+
+    def list_health_records(
+        self,
+        *,
+        page: int = 1,
+        page_size: int = 20,
+        keyword: str | None = None,
+        file_type: str | None = None,
+    ) -> AdminHealthRecordListResponse:
+        query = self.db.query(models.HealthData, models.User.username).join(
+            models.User, models.User.id == models.HealthData.user_id
+        )
+
+        trimmed_keyword = (keyword or "").strip()
+        if trimmed_keyword:
+            like_keyword = f"%{trimmed_keyword}%"
+            query = query.filter(models.User.username.ilike(like_keyword))
+
+        normalized_type = (file_type or "").strip().lower()
+        if normalized_type in {"text", "pdf", "word"}:
+            query = query.filter(models.HealthData.file_type == normalized_type)
+
+        total = query.count()
+        rows = (
+            query.order_by(models.HealthData.created_at.desc())
+            .offset((page - 1) * page_size)
+            .limit(page_size)
+            .all()
+        )
+
+        items = [
+            AdminHealthRecordSummaryResponse(
+                id=record.id,
+                user_id=record.user_id,
+                username=username,
+                file_type=record.file_type,
+                is_public=bool(record.is_public),
+                has_attachment=record.file_type in {"pdf", "word"},
+                is_onchain=bool(record.onchain_data_id),
+                created_at=record.created_at,
+                updated_at=record.updated_at,
+            )
+            for record, username in rows
+        ]
+
+        return AdminHealthRecordListResponse(
+            items=items,
+            total=total,
+            page=page,
+            page_size=page_size,
+        )
 
     def log(self, *, level: str, module: str, action: str, message: str, operator_id: int | None = None) -> None:
         if not self._is_operation_log_enabled() and module != "system_settings":

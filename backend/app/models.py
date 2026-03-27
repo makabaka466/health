@@ -1,4 +1,4 @@
-from sqlalchemy import Boolean, Column, DateTime, Enum, ForeignKey, Integer, LargeBinary, String, Text, UniqueConstraint
+from sqlalchemy import Boolean, Column, DateTime, ForeignKey, Integer, LargeBinary, String, Text, UniqueConstraint
 from sqlalchemy.orm import relationship
 from sqlalchemy.sql import func
 
@@ -68,7 +68,8 @@ class HealthData(Base):
     encrypted_data_content = Column(Text, nullable=True)
     pdf_data = Column(LargeBinary, nullable=True)
     encrypted_pdf_data = Column(LargeBinary, nullable=True)
-    file_type = Column(Enum("text", "pdf", name="health_data_file_type"), nullable=False, default="text", index=True)
+    file_type = Column(String(20), nullable=False, default="text", index=True)
+    file_mime_type = Column(String(100), nullable=True)
     pdf_size = Column(Integer, nullable=True)
     is_public = Column(Boolean, default=False, nullable=False, index=True)
     onchain_data_id = Column(String(66), nullable=True)
