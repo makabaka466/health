@@ -151,10 +151,13 @@
                       </el-tag>
                     </template>
                   </el-table-column>
-                  <el-table-column :label="actionsColumnText" width="140" fixed="right">
+                  <el-table-column :label="actionsColumnText" width="220" fixed="right">
                     <template #default="scope">
                       <el-button v-if="scope.row.requires_private_key" type="primary" text @click="viewPrivateRecord(scope.row)">
                         {{ scope.row.record_type === 'manual' ? revealDataText : revealAttachmentText }}
+                      </el-button>
+                      <el-button type="text" @click="openGrantDialog(scope.row)">
+                        {{ grantText }}
                       </el-button>
                       <el-button type="text" @click="editRecord(scope.row)">
                         {{ scope.row.record_type === 'pdf' ? replacePdfText : editText }}
@@ -385,7 +388,85 @@
         </div>
       </template>
     </el-dialog>
-  </div>
+
+
+    <el-dialog
+      v-model="grantDialogVisible"
+      :title="grantDialogTitle"
+      width="760px"
+    >
+      <template v-if="grantTargetRecord">
+        <el-alert
+          :title="grantDialogTip"
+          type="info"
+          show-icon
+          :closable="false"
+          style="margin-bottom: 14px"
+        />
+        <div class="grant-record-meta">
+          <el-tag type="primary" size="small">??ID?{{ grantTargetRecord.id }}</el-tag>
+          <el-tag size="small">{{ formatDate(grantTargetRecord.recorded_at) }}</el-tag>
+          <el-tag :type="grantTargetRecord.is_private ? 'warning' : 'success'" size="small">
+            {{ grantTargetRecord.is_private ? privateText : publicText }}
+          </el-tag>
+        </div>
+
+        <el-form :model="grantForm" label-width="96px" class="grant-form">
+          <el-form-item :label="doctorFieldLabel">
+            <el-select v-model="grantForm.doctor_id" :placeholder="doctorFieldPlaceholder" style="width: 100%">
+              <el-option
+                v-for="doctor in doctorSamples"
+                :key="doctor.id"
+                :label="`${doctor.name}?${doctor.title} / ${doctor.department}?`"
+                :value="doctor.id"
+              >
+                <div class="doctor-option">
+                  <span class="doctor-option__name">{{ doctor.name }}</span>
+                  <span class="doctor-option__meta">{{ doctor.title }} ? {{ doctor.department }} ? {{ doctor.hospital }}</span>
+                </div>
+              </el-option>
+            </el-select>
+          </el-form-item>
+          <el-form-item :label="expiryFieldLabel">
+            <el-input-number v-model="grantForm.expires_days" :min="1" :max="365" />
+            <span class="grant-form__suffix">{{ expiryFieldSuffix }}</span>
+          </el-form-item>
+          <el-form-item :label="remarkFieldLabel">
+            <el-input v-model="grantForm.remark" type="textarea" :rows="2" :placeholder="remarkFieldPlaceholder" />
+          </el-form-item>
+        </el-form>
+
+        <div class="grant-actions">
+          <el-button type="primary" @click="addMockGrant">{{ addGrantText }}</el-button>
+        </div>
+
+        <div class="grant-list">
+          <div class="grant-list__header">{{ grantedListTitle }}</div>
+          <el-empty v-if="currentRecordGrants.length === 0" :description="emptyGrantListText" />
+          <el-table v-else :data="currentRecordGrants" size="small" border>
+            <el-table-column prop="doctor_name" label="??" min-width="120" />
+            <el-table-column prop="doctor_department" label="??" min-width="110" />
+            <el-table-column prop="doctor_hospital" label="??" min-width="140" />
+            <el-table-column prop="expires_days" label="???(?)" width="100" />
+            <el-table-column label="????" min-width="160">
+              <template #default="scope">
+                {{ formatDate(scope.row.granted_at) }}
+              </template>
+            </el-table-column>
+            <el-table-column label="??" min-width="160">
+              <template #default="scope">
+                {{ scope.row.remark || '-' }}
+              </template>
+            </el-table-column>
+            <el-table-column label="??" width="100" fixed="right">
+              <template #default="scope">
+                <el-button type="danger" text @click="removeMockGrant(scope.row.id)">{{ revokeText }}</el-button>
+              </template>
+            </el-table-column>
+          </el-table>
+        </div>
+      </template>
+    </el-dialog>  </div>
 </template>
 
 <script setup>
@@ -403,6 +484,14 @@ const saving = ref(false)
 const healthFormRef = ref()
 const privatePreviewDialogVisible = ref(false)
 const privatePreviewRecord = ref(null)
+const grantDialogVisible = ref(false)
+const grantTargetRecord = ref(null)
+const mockGrants = ref([])
+const grantForm = ref({
+  doctor_id: '',
+  expires_days: 30,
+  remark: ''
+})
 
 const healthForm = ref({
   weight: null,
@@ -448,6 +537,7 @@ const privateViewFailedText = '\u67e5\u770b\u79c1\u5bc6\u6570\u636e\u5931\u8d25'
 const editText = '\u7f16\u8f91'
 const replacePdfText = '\u7f16\u8f91'
 const deleteText = '\u5220\u9664'
+const grantText = '??'
 const viewPdfText = '\u67e5\u770bPDF'
 const downloadWordText = '\u4e0b\u8f7dWord'
 const onchainColumnText = '\u94fe\u4e0a\u9a8c\u771f'
@@ -462,6 +552,24 @@ const onchainFailedText = '\u9a8c\u771f\u5931\u8d25'
 const loadFailedText = '\u52a0\u8f7d\u5065\u5eb7\u6570\u636e\u5931\u8d25'
 const analysisSuccessText = '\u5065\u5eb7\u5206\u6790\u5b8c\u6210'
 const analysisFailedText = '\u5065\u5eb7\u5206\u6790\u5931\u8d25'
+const grantDialogTitle = '??????????'
+const grantDialogTip = '????????? UI????????????'
+const doctorFieldLabel = '????'
+const doctorFieldPlaceholder = '???????'
+const expiryFieldLabel = '???'
+const expiryFieldSuffix = '?'
+const remarkFieldLabel = '??'
+const remarkFieldPlaceholder = '???????????????'
+const addGrantText = '????'
+const grantedListTitle = '???????????????'
+const emptyGrantListText = '??????'
+const revokeText = '??'
+
+const doctorSamples = [
+  { id: 'doctor_demo_001', name: '???', title: '????', department: '???', hospital: '???????' },
+  { id: 'doctor_demo_002', name: '???', title: '?????', department: '????', hospital: '?????' },
+  { id: 'doctor_demo_003', name: '???', title: '????', department: '?????', hospital: '??????' }
+]
 
 const fileAccept = computed(() => (
   '.pdf,.doc,.docx,application/pdf,application/msword,application/vnd.openxmlformats-officedocument.wordprocessingml.document'
@@ -711,6 +819,12 @@ const latestRecordDate = computed(() => {
   if (!healthRecords.value.length) return '-'
   return formatDate(healthRecords.value[0].recorded_at)
 })
+const currentRecordGrants = computed(() => {
+  if (!grantTargetRecord.value) return []
+  return mockGrants.value
+    .filter((item) => item.record_id === grantTargetRecord.value.id)
+    .sort((a, b) => new Date(b.granted_at).getTime() - new Date(a.granted_at).getTime())
+})
 const latestRecordLabel = computed(() => (healthRecords.value.length ? '已同步最近记录' : '暂无记录'))
 
 const openManualDialog = () => {
@@ -935,6 +1049,57 @@ const deleteRecord = async (record) => {
     await loadHealthData()
   } catch (error) {
     ElMessage.error('删除失败，请重试')
+  }
+}
+
+const resetGrantForm = () => {
+  grantForm.value = {
+    doctor_id: '',
+    expires_days: 30,
+    remark: ''
+  }
+}
+
+const openGrantDialog = (record) => {
+  grantTargetRecord.value = record
+  resetGrantForm()
+  grantDialogVisible.value = true
+}
+
+const addMockGrant = () => {
+  if (!grantTargetRecord.value) return
+  if (!grantForm.value.doctor_id) {
+    ElMessage.warning('??????')
+    return
+  }
+
+  const doctor = doctorSamples.find((item) => item.id === grantForm.value.doctor_id)
+  if (!doctor) {
+    ElMessage.error('???????')
+    return
+  }
+
+  mockGrants.value.unshift({
+    id: `grant_${Date.now()}_${Math.random().toString(16).slice(2, 8)}`,
+    record_id: grantTargetRecord.value.id,
+    doctor_id: doctor.id,
+    doctor_name: doctor.name,
+    doctor_department: doctor.department,
+    doctor_hospital: doctor.hospital,
+    expires_days: Number(grantForm.value.expires_days) || 30,
+    remark: (grantForm.value.remark || '').trim(),
+    granted_at: new Date().toISOString()
+  })
+
+  ElMessage.success('??????????????')
+  resetGrantForm()
+}
+
+const removeMockGrant = (grantId) => {
+  const before = mockGrants.value.length
+  mockGrants.value = mockGrants.value.filter((item) => item.id !== grantId)
+  if (mockGrants.value.length !== before) {
+    ElMessage.success('????????????')
   }
 }
 
@@ -1177,6 +1342,52 @@ onActivated(() => {
   margin-top: 16px;
   display: flex;
   justify-content: flex-end;
+}
+
+.grant-record-meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-bottom: 14px;
+}
+
+.grant-form__suffix {
+  margin-left: 10px;
+  color: #64748b;
+  font-size: 13px;
+}
+
+.doctor-option {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.doctor-option__name {
+  font-size: 13px;
+  color: #1e293b;
+}
+
+.doctor-option__meta {
+  font-size: 12px;
+  color: #64748b;
+}
+
+.grant-actions {
+  margin: 4px 0 14px;
+  display: flex;
+  justify-content: flex-end;
+}
+
+.grant-list {
+  margin-top: 6px;
+}
+
+.grant-list__header {
+  margin-bottom: 8px;
+  font-size: 13px;
+  font-weight: 600;
+  color: #334155;
 }
 
 .onchain-tag {

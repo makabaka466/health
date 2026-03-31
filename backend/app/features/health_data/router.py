@@ -10,6 +10,7 @@ from sqlalchemy.orm import Session
 from app.config import settings
 from app.database import get_db
 from app import models, schemas
+from app.features.admin.service import AdminSystemService
 from app.features.ai.service import invalidate_user_home_advice
 from app.features.auth.dependencies import get_current_user
 from app.features.auth.service import AuthService
@@ -392,6 +393,16 @@ async def create_health_record(
             raise HTTPException(status_code=400, detail=f"上链失败：{exc}") from exc
 
     db.add(db_record)
+    AdminSystemService(db).log(
+        level="INFO",
+        module="health_records",
+        action="create",
+        message=(
+            f"用户上传健康数据，类型：{file_type}，公开状态："
+            f"{'公开' if is_public else '私密'}"
+        ),
+        operator_id=current_user.id,
+    )
     db.commit()
     db.refresh(db_record)
     _invalidate_home_advice_if_needed(db, current_user, db_record.is_public)
@@ -536,6 +547,16 @@ async def update_health_record(
         except Exception as exc:  # noqa: BLE001
             raise HTTPException(status_code=400, detail=f"上链失败：{exc}") from exc
 
+    AdminSystemService(db).log(
+        level="INFO",
+        module="health_records",
+        action="update",
+        message=(
+            f"用户更新健康数据，记录ID：{record.id}，类型：{target_file_type}，公开状态："
+            f"{'公开' if record.is_public else '私密'}"
+        ),
+        operator_id=current_user.id,
+    )
     db.commit()
     db.refresh(record)
     _invalidate_home_advice_if_needed(db, current_user, was_public or record.is_public)
@@ -586,6 +607,16 @@ async def delete_health_record(
         raise HTTPException(status_code=404, detail="健康数据记录不存在")
 
     was_public = bool(record.is_public)
+    AdminSystemService(db).log(
+        level="INFO",
+        module="health_records",
+        action="delete",
+        message=(
+            f"用户删除健康数据，记录ID：{record.id}，类型：{record.file_type}，公开状态："
+            f"{'公开' if record.is_public else '私密'}"
+        ),
+        operator_id=current_user.id,
+    )
     db.delete(record)
     db.commit()
     _invalidate_home_advice_if_needed(db, current_user, was_public)

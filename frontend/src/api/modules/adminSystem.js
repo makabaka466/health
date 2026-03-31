@@ -17,3 +17,7 @@ export async function getSystemLogs(params = {}) {
 export async function getAdminHealthRecords(params = {}) {
   return adminSystemApi.get('/admin/system/health-records', { params })
 }
+
+export async function getAdminHealthRecordDetail(recordId, params = {}) {
+  return adminSystemApi.get(`/admin/system/health-records/${recordId}`, { params })
+}

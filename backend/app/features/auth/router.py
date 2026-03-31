@@ -9,6 +9,7 @@ from sqlalchemy.orm import Session
 from app import models
 from app.config import settings
 from app.database import get_db
+from app.features.admin.service import AdminSystemService
 from app.features.auth.dependencies import create_access_token, get_current_admin, get_current_user
 from app.features.auth.profile_service import UserProfileService
 from app.features.auth.service import AuthService
@@ -85,6 +86,14 @@ async def login(form_data: OAuth2PasswordRequestForm = Depends(), db: Session = 
     if not user.is_active:
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="账号已被禁用")
 
+    AdminSystemService(db).log(
+        level="INFO",
+        module="auth",
+        action="login",
+        message=f"用户登录成功：{user.username}",
+        operator_id=user.id,
+    )
+    db.commit()
     return _build_login_token(user)
 
 
@@ -109,6 +118,14 @@ async def social_login_init(payload: SocialLoginInitRequest, db: Session = Depen
     if not user.is_active:
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="账号已被禁用")
 
+    AdminSystemService(db).log(
+        level="INFO",
+        module="auth",
+        action="social_login",
+        message=f"用户社交登录成功：{user.username}",
+        operator_id=user.id,
+    )
+    db.commit()
     return SocialLoginInitResponse(need_profile_completion=False, **_build_login_token(user))
 
 
@@ -120,6 +137,14 @@ async def social_profile_complete(payload: SocialProfileCompleteRequest, db: Ses
     except ValueError as exc:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
 
+    AdminSystemService(db).log(
+        level="INFO",
+        module="auth",
+        action="social_complete",
+        message=f"用户完成社交账号资料补全：{user.username}",
+        operator_id=user.id,
+    )
+    db.commit()
     return _build_login_token(user)
 
 
@@ -142,6 +167,14 @@ async def admin_login(form_data: OAuth2PasswordRequestForm = Depends(), db: Sess
         data={"sub": user.username, "role": "admin"},
         expires_delta=timedelta(minutes=60),
     )
+    AdminSystemService(db).log(
+        level="INFO",
+        module="auth",
+        action="admin_login",
+        message=f"管理员登录成功：{user.username}",
+        operator_id=user.id,
+    )
+    db.commit()
     return {
         "access_token": access_token,
         "token_type": "bearer",
@@ -280,6 +313,13 @@ async def update_admin_user_status(
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="不能禁用当前管理员账号")
 
     user.is_active = is_active
+    AdminSystemService(db).log(
+        level="INFO",
+        module="admin_users",
+        action="update_status",
+        message=f"管理员修改用户状态：{user.username} -> {'启用' if is_active else '禁用'}",
+        operator_id=current_admin.id,
+    )
     db.commit()
     db.refresh(user)
     return AuthService.serialize_admin_user_response(user)
@@ -289,12 +329,19 @@ async def update_admin_user_status(
 async def reset_admin_user_password(
     user_id: int,
     db: Session = Depends(get_db),
-    _: models.User = Depends(get_current_admin),
+    current_admin: models.User = Depends(get_current_admin),
 ):
     user = db.query(models.User).filter(models.User.id == user_id).first()
     if not user:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="用户不存在")
 
     user.password_hash = AuthService.hash_password("123456")
+    AdminSystemService(db).log(
+        level="INFO",
+        module="admin_users",
+        action="reset_password",
+        message=f"管理员重置用户密码：{user.username}",
+        operator_id=current_admin.id,
+    )
     db.commit()
     return {"message": f"用户 {user.username} 密码已重置为初始密码", "initial_password": "123456"}

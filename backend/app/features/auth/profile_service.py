@@ -2,6 +2,7 @@ from fastapi import HTTPException, status
 from sqlalchemy.orm import Session
 
 from app import models
+from app.features.admin.service import AdminSystemService
 from app.features.ai.service import invalidate_user_home_advice
 from app.features.auth.privacy import mask_wallet_address
 from app.features.auth.service import AuthService
@@ -42,10 +43,19 @@ class UserProfileService:
         user.profile_is_public = is_public
         user.public_profile_data = profile_data if is_public else None
 
+        if was_public or is_public:
+            invalidate_user_home_advice(self.db, user, commit=False)
+
+        AdminSystemService(self.db).log(
+            level="INFO",
+            module="user_profile",
+            action="update",
+            message=f"用户更新个人资料，公开状态：{'公开' if is_public else '私密'}",
+            operator_id=user.id,
+        )
+
         self.db.commit()
         self.db.refresh(user)
-        if was_public or is_public:
-            invalidate_user_home_advice(self.db, user)
 
         return {
             "user_id": user.id,

@@ -321,6 +321,10 @@ class HealthDataResponse(HealthDataBase):
     class Config:
         from_attributes = True
 
+
+class AdminHealthRecordDetailResponse(HealthDataResponse):
+    username: str
+
 class HealthAnalysisRequest(BaseModel):
     start_date: Optional[date] = None
     end_date: Optional[date] = None

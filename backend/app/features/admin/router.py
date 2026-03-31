@@ -1,10 +1,19 @@
-from fastapi import APIRouter, Depends, Query
+from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.orm import Session
 
+from app import models
 from app.database import get_db
 from app.features.admin.service import AdminSystemService
 from app.features.auth.dependencies import get_current_admin
-from app.schemas import AdminHealthRecordListResponse, AdminSystemLogResponse, AdminSystemSettings
+from app.features.auth.service import AuthService
+from app.features.blockchain.encryption import normalize_private_key, verify_user_private_key
+from app.features.health_data.router import _serialize_record
+from app.schemas import (
+    AdminHealthRecordDetailResponse,
+    AdminHealthRecordListResponse,
+    AdminSystemLogResponse,
+    AdminSystemSettings,
+)
 
 
 router = APIRouter()
@@ -80,3 +89,43 @@ async def list_admin_health_records(
         keyword=keyword,
         file_type=file_type,
     )
+
+
+@router.get("/health-records/{record_id}", response_model=AdminHealthRecordDetailResponse)
+async def get_admin_health_record_detail(
+    record_id: int,
+    private_key: str | None = Query(None),
+    db: Session = Depends(get_db),
+    current_admin=Depends(get_current_admin),
+):
+    record = db.query(models.HealthData).filter(models.HealthData.id == record_id).first()
+    if not record:
+        raise HTTPException(status_code=404, detail="健康数据记录不存在")
+
+    owner = db.query(models.User).filter(models.User.id == record.user_id).first()
+    if not owner:
+        raise HTTPException(status_code=404, detail="记录所属用户不存在")
+
+    normalized_private_key = None
+    if private_key:
+        wallet_address = AuthService.get_user_wallet_address(owner)
+        if not verify_user_private_key(private_key, wallet_address, owner.private_key_hash):
+            raise HTTPException(status_code=403, detail="私钥校验失败，无法查看该隐私数据")
+        normalized_private_key = normalize_private_key(private_key)
+
+    service = AdminSystemService(db)
+    service.log(
+        level="INFO",
+        module="health_records",
+        action="view_detail",
+        message=(
+            f"管理员查看健康数据详情，记录ID：{record.id}，公开状态："
+            f"{'公开' if record.is_public else '私密'}"
+        ),
+        operator_id=current_admin.id,
+    )
+    db.commit()
+
+    payload = _serialize_record(record, normalized_private_key, owner)
+    payload["username"] = owner.username
+    return payload

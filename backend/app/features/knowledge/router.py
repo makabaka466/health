@@ -13,6 +13,7 @@ from sqlalchemy.orm import Session
 from app import models, schemas
 from app.config import settings
 from app.database import get_db
+from app.features.admin.service import AdminSystemService
 from app.features.auth.dependencies import get_current_user
 from app.features.rag.index_service import RagIndexError, delete_rag_document_index, sync_rag_document_index
 from app.features.rag.vector_store import VectorStoreError, get_points
@@ -425,6 +426,13 @@ async def favorite_article(
     )
     if not existing:
         db.add(models.ArticleFavorite(user_id=current_user.id, article_id=article_id))
+        AdminSystemService(db).log(
+            level="INFO",
+            module="knowledge_articles",
+            action="favorite",
+            message=f"用户收藏文章：{article.title}（ID：{article.id}）",
+            operator_id=current_user.id,
+        )
         db.commit()
 
     count_map = _favorite_count_map(db, [article_id])
@@ -452,6 +460,13 @@ async def unfavorite_article(
 
     if favorite:
         db.delete(favorite)
+        AdminSystemService(db).log(
+            level="INFO",
+            module="knowledge_articles",
+            action="unfavorite",
+            message=f"用户取消收藏文章：{article_id}",
+            operator_id=current_user.id,
+        )
         db.commit()
 
     count_map = _favorite_count_map(db, [article_id])
@@ -586,6 +601,13 @@ async def create_article(
         tags=_join_tags(payload.tags),
     )
     db.add(article)
+    AdminSystemService(db).log(
+        level="INFO",
+        module="knowledge_articles",
+        action="create",
+        message=f"管理员新增健康文章：{payload.title}",
+        operator_id=current_user.id,
+    )
     db.commit()
     db.refresh(article)
 
@@ -654,6 +676,13 @@ async def import_articles(
         raise HTTPException(status_code=400, detail="没有可导入的有效文件")
 
     db.add_all(imported_articles)
+    AdminSystemService(db).log(
+        level="INFO",
+        module="knowledge_articles",
+        action="import",
+        message=f"管理员批量导入健康文章，成功导入 {len(imported_articles)} 篇，分类：{category}",
+        operator_id=current_user.id,
+    )
     db.commit()
     for article in imported_articles:
         db.refresh(article)
@@ -689,6 +718,13 @@ async def update_article(
     for key, value in update_data.items():
         setattr(article, key, value)
 
+    AdminSystemService(db).log(
+        level="INFO",
+        module="knowledge_articles",
+        action="update",
+        message=f"管理员修改健康文章：{article.title}（ID：{article.id}）",
+        operator_id=current_user.id,
+    )
     db.commit()
     db.refresh(article)
 
@@ -716,6 +752,13 @@ async def delete_article(
         raise HTTPException(status_code=404, detail="文章不存在")
 
     db.delete(article)
+    AdminSystemService(db).log(
+        level="INFO",
+        module="knowledge_articles",
+        action="delete",
+        message=f"管理员删除健康文章：{article.title}（ID：{article.id}）",
+        operator_id=current_user.id,
+    )
     db.commit()
     return {"message": "文章已删除"}
 
@@ -783,6 +826,13 @@ async def create_rag_doc(
         is_active=payload.is_active,
     )
     db.add(doc)
+    AdminSystemService(db).log(
+        level="INFO",
+        module="knowledge_base",
+        action="create",
+        message=f"管理员新增知识库文档：{payload.title}",
+        operator_id=current_user.id,
+    )
     db.commit()
     db.refresh(doc)
     _sync_rag_index_safely(db, doc)
@@ -952,6 +1002,13 @@ async def import_rag_docs(
         raise HTTPException(status_code=400, detail="没有可导入的有效文件")
 
     db.add_all(imported_docs)
+    AdminSystemService(db).log(
+        level="INFO",
+        module="knowledge_base",
+        action="import",
+        message=f"管理员批量导入知识库文档，成功导入 {len(imported_docs)} 个，分类：{category}",
+        operator_id=current_user.id,
+    )
     db.commit()
     for doc in imported_docs:
         db.refresh(doc)
@@ -1035,6 +1092,13 @@ async def update_rag_doc(
     for key, value in update_data.items():
         setattr(doc, key, value)
 
+    AdminSystemService(db).log(
+        level="INFO",
+        module="knowledge_base",
+        action="update",
+        message=f"管理员修改知识库文档：{doc.title}（ID：{doc.id}）",
+        operator_id=current_user.id,
+    )
     db.commit()
     db.refresh(doc)
     _sync_rag_index_safely(db, doc)
@@ -1054,5 +1118,12 @@ async def delete_rag_doc(
 
     _delete_rag_index_safely(db, doc.id)
     db.delete(doc)
+    AdminSystemService(db).log(
+        level="INFO",
+        module="knowledge_base",
+        action="delete",
+        message=f"管理员删除知识库文档：{doc.title}（ID：{doc.id}）",
+        operator_id=current_user.id,
+    )
     db.commit()
     return {"message": "知识库文档已删除"}

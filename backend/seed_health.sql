@@ -6,11 +6,14 @@ USE `health`;
 
 SET FOREIGN_KEY_CHECKS = 0;
 
+DROP TABLE IF EXISTS `rag_knowledge_chunks`;
+DROP TABLE IF EXISTS `rag_knowledge_documents`;
 DROP TABLE IF EXISTS `article_read_histories`;
 DROP TABLE IF EXISTS `article_favorites`;
 DROP TABLE IF EXISTS `chat_messages`;
 DROP TABLE IF EXISTS `system_logs`;
 DROP TABLE IF EXISTS `system_settings`;
+DROP TABLE IF EXISTS `health_data`;
 DROP TABLE IF EXISTS `health_data_user`;
 DROP TABLE IF EXISTS `health_articles`;
 DROP TABLE IF EXISTS `users`;
@@ -37,23 +40,39 @@ CREATE TABLE `users` (
   `id` INT NOT NULL AUTO_INCREMENT,
   `username` VARCHAR(50) NOT NULL,
   `email` VARCHAR(255) NOT NULL,
+  `encrypted_email` TEXT NULL,
+  `email_hash` VARCHAR(64) NULL,
   `password_hash` VARCHAR(255) NOT NULL,
+  `role` VARCHAR(20) NOT NULL DEFAULT 'user',
+  `is_active` TINYINT(1) NOT NULL DEFAULT 1,
+  `created_at` DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  `updated_at` DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  `role_id` INT NULL,
   `wallet_address` VARCHAR(42) NULL,
+  `encrypted_wallet_address` TEXT NULL,
+  `wallet_address_hash` VARCHAR(64) NULL,
   `private_key_hash` VARCHAR(128) NULL,
   `encrypted_profile_data` TEXT NULL,
   `public_profile_data` TEXT NULL,
   `profile_is_public` TINYINT(1) NOT NULL DEFAULT 0,
-  `role` VARCHAR(20) NOT NULL DEFAULT 'user',
-  `role_id` INT NULL,
-  `is_active` TINYINT(1) NOT NULL DEFAULT 1,
-  `created_at` DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
-  `updated_at` DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  `encrypted_private_key` TEXT NULL,
+  `social_provider` VARCHAR(20) NULL,
+  `social_open_id` VARCHAR(128) NULL,
+  `encrypted_social_open_id` TEXT NULL,
+  `social_open_id_hash` VARCHAR(64) NULL,
+  `social_nickname` VARCHAR(100) NULL,
+  `home_ai_advice_cache` TEXT NULL,
   PRIMARY KEY (`id`),
   UNIQUE KEY `uq_users_username` (`username`),
   UNIQUE KEY `uq_users_email` (`email`),
+  UNIQUE KEY `uq_users_email_hash` (`email_hash`),
   UNIQUE KEY `uq_users_wallet_address` (`wallet_address`),
+  UNIQUE KEY `uq_users_wallet_address_hash` (`wallet_address_hash`),
   KEY `idx_users_role_id` (`role_id`),
   KEY `idx_users_is_active` (`is_active`),
+  KEY `idx_users_social_provider` (`social_provider`),
+  KEY `idx_users_social_open_id` (`social_open_id`),
+  KEY `idx_users_social_open_id_hash` (`social_open_id_hash`),
   CONSTRAINT `fk_users_role_id`
     FOREIGN KEY (`role_id`) REFERENCES `roles` (`id`)
     ON DELETE SET NULL
@@ -66,22 +85,45 @@ CREATE TABLE `health_data_user` (
   `id` INT NOT NULL AUTO_INCREMENT,
   `user_id` INT NOT NULL,
   `data_title` VARCHAR(255) NULL,
-  `data_content` TEXT NULL,
+  `data_content` LONGTEXT NULL,
   `encrypted_data_content` TEXT NULL,
   `pdf_data` LONGBLOB NULL,
   `encrypted_pdf_data` LONGBLOB NULL,
-  `file_type` ENUM('text', 'pdf') NOT NULL DEFAULT 'text',
+  `file_type` VARCHAR(20) NOT NULL DEFAULT 'text',
+  `file_mime_type` VARCHAR(100) NULL,
   `pdf_size` INT NULL,
   `is_public` TINYINT(1) NOT NULL DEFAULT 0,
   `onchain_data_id` VARCHAR(66) NULL,
   `onchain_tx_hash` VARCHAR(66) NULL,
-  `created_at` DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
-  `updated_at` DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  `created_at` TIMESTAMP NULL DEFAULT CURRENT_TIMESTAMP,
+  `updated_at` TIMESTAMP NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
   PRIMARY KEY (`id`),
   KEY `idx_health_data_user_id` (`user_id`),
   KEY `idx_health_data_file_type` (`file_type`),
   KEY `idx_health_data_is_public` (`is_public`),
   CONSTRAINT `fk_health_data_user_user_id`
+    FOREIGN KEY (`user_id`) REFERENCES `users` (`id`)
+    ON DELETE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
+CREATE TABLE `health_data` (
+  `id` INT NOT NULL AUTO_INCREMENT,
+  `user_id` INT NOT NULL,
+  `weight` FLOAT NULL,
+  `height` FLOAT NULL,
+  `blood_pressure_systolic` INT NULL,
+  `blood_pressure_diastolic` INT NULL,
+  `heart_rate` INT NULL,
+  `blood_sugar` FLOAT NULL,
+  `recorded_at` DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  `is_private` TINYINT(1) NOT NULL DEFAULT 0,
+  `health_data_image` TEXT NULL,
+  `record_type` VARCHAR(20) NOT NULL DEFAULT 'manual',
+  `health_data_file_name` VARCHAR(255) NULL,
+  `health_data_file` TEXT NULL,
+  PRIMARY KEY (`id`),
+  KEY `idx_health_data_user_id` (`user_id`),
+  CONSTRAINT `fk_health_data_user_id`
     FOREIGN KEY (`user_id`) REFERENCES `users` (`id`)
     ON DELETE CASCADE
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
@@ -130,11 +172,13 @@ CREATE TABLE `system_logs` (
 -- =========================
 CREATE TABLE `chat_messages` (
   `id` INT NOT NULL AUTO_INCREMENT,
+  `session_id` INT NULL,
   `user_id` INT NOT NULL,
   `message` TEXT NOT NULL,
   `is_user` TINYINT(1) NOT NULL DEFAULT 1,
   `created_at` DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
   PRIMARY KEY (`id`),
+  KEY `idx_chat_messages_session_id` (`session_id`),
   KEY `idx_chat_messages_user_id` (`user_id`),
   CONSTRAINT `fk_chat_messages_user_id`
     FOREIGN KEY (`user_id`) REFERENCES `users` (`id`)
@@ -158,6 +202,42 @@ CREATE TABLE `health_articles` (
   PRIMARY KEY (`id`),
   KEY `idx_health_articles_category` (`category`),
   KEY `idx_health_articles_view_count` (`view_count`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
+CREATE TABLE `rag_knowledge_documents` (
+  `id` INT NOT NULL AUTO_INCREMENT,
+  `title` VARCHAR(200) NOT NULL,
+  `category` VARCHAR(50) NOT NULL,
+  `content` TEXT NOT NULL,
+  `source` VARCHAR(255) NULL,
+  `tags` VARCHAR(500) NULL,
+  `is_active` TINYINT(1) NOT NULL DEFAULT 1,
+  `created_at` DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  `updated_at` DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  PRIMARY KEY (`id`),
+  KEY `idx_rag_knowledge_documents_title` (`title`),
+  KEY `idx_rag_knowledge_documents_category` (`category`),
+  KEY `idx_rag_knowledge_documents_is_active` (`is_active`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
+CREATE TABLE `rag_knowledge_chunks` (
+  `id` INT NOT NULL AUTO_INCREMENT,
+  `document_id` INT NOT NULL,
+  `point_id` VARCHAR(80) NOT NULL,
+  `chunk_index` INT NOT NULL,
+  `content` TEXT NOT NULL,
+  `char_count` INT NOT NULL DEFAULT 0,
+  `is_active` TINYINT(1) NOT NULL DEFAULT 1,
+  `created_at` DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  `updated_at` DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  PRIMARY KEY (`id`),
+  UNIQUE KEY `uq_rag_chunks_point_id` (`point_id`),
+  UNIQUE KEY `uq_rag_chunk_doc_index` (`document_id`, `chunk_index`),
+  KEY `idx_rag_knowledge_chunks_document_id` (`document_id`),
+  KEY `idx_rag_knowledge_chunks_is_active` (`is_active`),
+  CONSTRAINT `fk_rag_knowledge_chunks_document_id`
+    FOREIGN KEY (`document_id`) REFERENCES `rag_knowledge_documents` (`id`)
+    ON DELETE CASCADE
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 
 -- =========================
