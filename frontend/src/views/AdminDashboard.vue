@@ -37,10 +37,6 @@
             <el-icon><DataAnalysis /></el-icon>
             <template #title><span class="menu-title">{{ labels.healthData }}</span></template>
           </el-menu-item>
-          <el-menu-item index="/admin/ai-chat">
-            <el-icon><ChatDotRound /></el-icon>
-            <template #title><span class="menu-title">{{ labels.ai }}</span></template>
-          </el-menu-item>
           <el-menu-item index="/admin/knowledge-base">
             <el-icon><Document /></el-icon>
             <template #title><span class="menu-title">{{ labels.knowledgeBase }}</span></template>
@@ -158,7 +154,6 @@ const labels = {
   console: '\u63a7\u5236\u53f0',
   users: '\u7528\u6237\u7ba1\u7406',
   healthData: '\u5065\u5eb7\u8bb0\u5f55',
-  ai: 'AI \u7ba1\u7406',
   knowledgeBase: '\u77e5\u8bc6\u5e93\u7ba1\u7406',
   articles: '\u6587\u7ae0\u7ba1\u7406',
   settings: '\u7cfb\u7edf\u8bbe\u7f6e',
@@ -191,7 +186,6 @@ const routeMap = {
   '/admin': labels.console,
   '/admin/users': labels.users,
   '/admin/health-data': labels.healthData,
-  '/admin/ai-chat': labels.ai,
   '/admin/knowledge-base': labels.knowledgeBase,
   '/admin/articles': labels.articles,
   '/admin/settings': labels.settings,

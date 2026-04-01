@@ -3,11 +3,11 @@
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from app.database import init_db
-from app.features.admin.router import router as admin_system_router
-from app.features.ai.router import router as ai_assistant_router
-from app.features.auth.router import router as auth_router
-from app.features.health_data.router import router as health_data_router
-from app.features.knowledge.router import router as knowledge_router
+from app.controller.admin_controller import router as admin_system_router
+from app.controller.ai_controller import router as ai_assistant_router
+from app.controller.auth_controller import router as auth_router
+from app.controller.health_data_controller import router as health_data_router
+from app.controller.knowledge_controller import router as knowledge_router
 
  
 app = FastAPI(

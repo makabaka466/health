@@ -329,6 +329,35 @@ class HealthAnalysisRequest(BaseModel):
     start_date: Optional[date] = None
     end_date: Optional[date] = None
 
+
+class HealthDataGrantCreate(BaseModel):
+    grantee_user_id: int
+    expires_days: int = Field(default=30, ge=1, le=3650)
+    remark: Optional[str] = Field(default=None, max_length=255)
+
+
+class HealthDataGrantResponse(BaseModel):
+    id: int
+    record_id: int
+    owner_user_id: int
+    grantee_user_id: int
+    grantee_username: Optional[str] = None
+    can_read: bool = True
+    expires_at: Optional[datetime] = None
+    remark: Optional[str] = None
+    revoked_at: Optional[datetime] = None
+    created_at: datetime
+
+    class Config:
+        from_attributes = True
+
+
+class HealthDataGrantableUser(BaseModel):
+    id: int
+    username: str
+    role: str
+
+
 # AI聊天Schema
 class ChatMessage(BaseModel):
     message: str

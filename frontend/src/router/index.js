@@ -86,12 +86,6 @@ const routes = [
         component: () => import('../views/admin/AdminHealthRecords.vue')
       },
       {
-        path: 'ai-chat',
-        name: 'AdminAIChat',
-        component: () => import('../views/AiAssistant.vue'),
-        meta: { keepAlive: true }
-      },
-      {
         path: 'knowledge-base',
         name: 'AdminKnowledgeBase',
         component: () => import('../views/AdminKnowledgeBase.vue')

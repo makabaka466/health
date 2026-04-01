@@ -73,6 +73,8 @@ def _ensure_schema_updates() -> None:
         health_alter_sql = {
             "encrypted_data_content": "ALTER TABLE health_data_user ADD COLUMN encrypted_data_content TEXT NULL",
             "encrypted_pdf_data": "ALTER TABLE health_data_user ADD COLUMN encrypted_pdf_data LONGBLOB NULL",
+            "owner_encrypted_dek": "ALTER TABLE health_data_user ADD COLUMN owner_encrypted_dek TEXT NULL",
+            "encryption_version": "ALTER TABLE health_data_user ADD COLUMN encryption_version VARCHAR(20) NOT NULL DEFAULT 'legacy'",
             "is_public": "ALTER TABLE health_data_user ADD COLUMN is_public BOOLEAN NOT NULL DEFAULT 0",
             "onchain_data_id": "ALTER TABLE health_data_user ADD COLUMN onchain_data_id VARCHAR(66) NULL",
             "onchain_tx_hash": "ALTER TABLE health_data_user ADD COLUMN onchain_tx_hash VARCHAR(66) NULL",
@@ -91,6 +93,17 @@ def _ensure_schema_updates() -> None:
                         "MODIFY COLUMN file_type VARCHAR(20) NOT NULL DEFAULT 'text'"
                     )
                 )
+
+    if "users" in inspector.get_table_names():
+        user_columns = {col["name"] for col in inspector.get_columns("users")}
+        with engine.begin() as conn:
+            if "encryption_public_key" not in user_columns:
+                conn.execute(text("ALTER TABLE users ADD COLUMN encryption_public_key TEXT NULL"))
+
+    if "health_data_grants" not in inspector.get_table_names():
+        from app import models  # noqa: F401
+
+        models.HealthDataGrant.__table__.create(bind=engine, checkfirst=True)
 
 
 def init_db() -> None:

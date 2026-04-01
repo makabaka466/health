@@ -211,11 +211,11 @@ const quickActions = ref([
     route: '/admin/health-data'
   },
   {
-    title: 'AI管理',
-    description: '配置AI助手参数',
-    icon: 'ChatDotRound',
+    title: '知识库管理',
+    description: '维护知识文档与检索内容',
+    icon: 'Document',
     color: '#E6A23C',
-    route: '/admin/ai-chat'
+    route: '/admin/knowledge-base'
   },
   {
     title: '系统设置',
