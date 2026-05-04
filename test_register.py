@@ -1,99 +1,78 @@
 #!/usr/bin/env python3
 """
-注册功能测试脚本
-测试用户注册和登录流程
+Register/Login smoke test script.
 """
 
 import asyncio
+import sys
+import uuid
+
 import aiohttp
-import json
 
 BASE_URL = "http://127.0.0.1:8000/api"
 
-async def test_register():
-    """测试用户注册"""
-    print("🧪 测试用户注册功能...")
-    
-    test_user = {
-        "username": "testuser2024",
-        "email": "testuser2024@example.com",
-        "password": "Test123456!"
+
+async def test_register() -> tuple[bool, dict]:
+    user_suffix = uuid.uuid4().hex[:8]
+    user = {
+        "username": f"testuser_{user_suffix}",
+        "email": f"testuser_{user_suffix}@example.com",
+        "password": "Test123456!",
     }
-    
+    print(f"[INFO] register user={user['username']}")
     async with aiohttp.ClientSession() as session:
         try:
-            # 测试注册
-            async with session.post(f"{BASE_URL}/auth/register", json=test_user) as response:
+            async with session.post(f"{BASE_URL}/auth/register", json=user) as response:
+                body = await response.text()
                 if response.status == 200:
-                    data = await response.json()
-                    print(f"✅ 注册成功: {data['username']}")
-                    return True
-                else:
-                    error_text = await response.text()
-                    print(f"❌ 注册失败: {response.status} - {error_text}")
-                    return False
-                    
-        except Exception as e:
-            print(f"❌ 注册异常: {e}")
-            return False
+                    print(f"[PASS] register status=200 body={body[:160]}")
+                    return True, user
+                print(f"[FAIL] register status={response.status} body={body[:300]}")
+                return False, user
+        except Exception as exc:  # noqa: BLE001
+            print(f"[FAIL] register exception={exc}")
+            return False, user
 
-async def test_login():
-    """测试用户登录"""
-    print("\n🔐 测试用户登录功能...")
-    
-    login_data = {
-        "username": "testuser2024",
-        "password": "Test123456!"
-    }
-    
+
+async def test_login(user: dict) -> bool:
+    payload = {"username": user["username"], "password": user["password"]}
+    print(f"[INFO] login user={user['username']}")
     async with aiohttp.ClientSession() as session:
         try:
-            async with session.post(
-                f"{BASE_URL}/auth/login", 
-                data=login_data
-            ) as response:
-                if response.status == 200:
-                    data = await response.json()
-                    print(f"✅ 登录成功: {data['username']}")
-                    print(f"   Token: {data['access_token'][:50]}...")
-                    print(f"   Role: {data['role']}")
-                    return True
-                else:
-                    error_text = await response.text()
-                    print(f"❌ 登录失败: {response.status} - {error_text}")
+            async with session.post(f"{BASE_URL}/auth/login", data=payload) as response:
+                body = await response.text()
+                if response.status != 200:
+                    print(f"[FAIL] login status={response.status} body={body[:300]}")
                     return False
-                    
-        except Exception as e:
-            print(f"❌ 登录异常: {e}")
+                token = (await response.json()).get("access_token")
+                if not token:
+                    print("[FAIL] login missing access_token")
+                    return False
+                print("[PASS] login status=200 token_received=true")
+                async with session.get(
+                    f"{BASE_URL}/auth/me",
+                    headers={"Authorization": f"Bearer {token}"},
+                ) as me_resp:
+                    me_body = await me_resp.text()
+                    if me_resp.status == 200:
+                        print(f"[PASS] /auth/me status=200 body={me_body[:160]}")
+                        return True
+                    print(f"[FAIL] /auth/me status={me_resp.status} body={me_body[:300]}")
+                    return False
+        except Exception as exc:  # noqa: BLE001
+            print(f"[FAIL] login exception={exc}")
             return False
 
-async def main():
-    """主函数"""
-    print("🚀 开始测试注册和登录功能")
-    print("=" * 50)
-    
-    register_success = await test_register()
-    
-    if register_success:
-        login_success = await test_login()
-        
-        if login_success:
-            print("\n🎉 注册和登录功能测试通过！")
-            print("\n📱 前端测试步骤:")
-            print("1. 访问: http://localhost:3000")
-            print("2. 点击 '立即注册'")
-            print("3. 填写注册信息:")
-            print("   - 用户名: testuser2024")
-            print("   - 邮箱: testuser2024@example.com")
-            print("   - 密码: Test123456!")
-            print("4. 同意服务协议并注册")
-            print("5. 注册成功后会自动跳转到登录页面")
-            print("6. 使用注册的账号登录")
-        else:
-            print("\n⚠️  注册成功但登录失败")
-    else:
-        print("\n❌ 注册功能测试失败")
-        print("请检查后端服务是否正常运行")
+
+async def main() -> bool:
+    print("== Register/Login Smoke Test ==")
+    register_ok, user = await test_register()
+    if not register_ok:
+        return False
+    return await test_login(user)
+
 
 if __name__ == "__main__":
-    asyncio.run(main())
+    ok = asyncio.run(main())
+    sys.exit(0 if ok else 1)
+

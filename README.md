@@ -1,159 +1,137 @@
 ﻿# 健康管理系统
 
-基于 **Vue 3 + FastAPI + MySQL + Ollama + Qdrant** 的健康管理平台，支持用户健康档案管理、健康知识库、AI 问答、私密数据解密、以及基于本地大模型的向量检索增强问答（RAG）。
+基于 **Vue 3 + FastAPI + MySQL + Web3 + Ollama + Qdrant** 的健康管理平台，覆盖用户档案、健康数据管理、知识库检索、AI 助手、链上存证与管理端系统设置。
 
-## 当前已实现的核心能力
+## 本次整体审查结论（已处理）
 
-- 用户注册、登录、鉴权
-- 健康数据管理：文本 / PDF 上传、公开 / 私密存储
-- 健康知识文章管理与阅读历史、收藏
-- AI 助手问答：支持非流式与流式输出
-- 用户公开健康数据注入 AI 上下文
-- 用户主动选择私密数据参与本次问答
-- 本地 Ollama 模型推理
-- Qdrant 向量检索增强问答（RAG）
-- 管理端知识库维护：手动新增、编辑、删除、批量导入 PDF / DOCX
+本次已修复一批“明显上下文不匹配/乱码”问题，重点如下：
 
----
+1. 后端接口报错与日志中的乱码/占位符（`????`）
+- 修复文件：`backend/app/controller/health_data_controller.py`
+- 结果：更新/授权/共享查看等关键流程的错误提示和日志可读。
 
-## 技术栈
+2. 区块链服务中的错误提示乱码
+- 修复文件：`backend/app/service/blockchain_service.py`
+- 结果：`bytes32` 长度校验异常信息恢复为清晰英文。
 
-### 后端
-- FastAPI
-- SQLAlchemy
-- MySQL
-- PyMySQL
-- Pydantic
-- python-jose / JWT
-- Web3.py
-- pypdf
-- python-docx
-- qdrant-client
+3. 管理员相关日志与重置密码返回文案乱码
+- 修复文件：`backend/app/controller/auth_controller.py`
+- 结果：管理员登录、状态修改、重置密码日志与接口返回文案恢复正常。
 
-### 前端
-- Vue 3
-- Vite
-- Element Plus
-- Vue Router
-- Axios
+4. 健康数据页面授权区域大量占位符（`??`）
+- 修复文件：`frontend/src/views/HealthData.vue`
+- 结果：授权弹窗标题、字段名、表头、按钮文案、演示医生数据、提示信息均可读。
 
-### AI / RAG
-- Ollama
-  - 生成模型：`deepseek-r1:8b`
-  - 向量模型：`nomic-embed-text`
-- Qdrant
-- 本地分块与向量化索引
+5. 注册页样式注释异常字符
+- 修复文件：`frontend/src/views/Register.vue`
+- 结果：清理私有区乱码字符。
+
+6. 后端入口文案与注释整理
+- 修复文件：`backend/app/main.py`
+- 结果：统一 API 标题/描述/根路由文案，去掉重复注释。
 
 ---
 
-## 项目结构
+## 当前代码结构（按实际项目）
 
 ```text
 健康管理系统/
 ├─ backend/
 │  ├─ app/
-│  │  ├─ config.py
-│  │  ├─ database.py
-│  │  ├─ main.py
-│  │  ├─ models.py
-│  │  ├─ schemas.py
-│  │  └─ features/
-│  │     ├─ admin/
-│  │     ├─ ai/
-│  │     ├─ auth/
-│  │     ├─ blockchain/
-│  │     ├─ health_data/
-│  │     ├─ knowledge/
-│  │     └─ rag/
-│  ├─ scripts/
-│  │  └─ rebuild_rag_index.py
+│  │  ├─ main.py                      # FastAPI 入口（当前挂载 controller 路由）
+│  │  ├─ config.py                    # 系统配置
+│  │  ├─ database.py                  # DB 初始化与会话
+│  │  ├─ models.py                    # SQLAlchemy 模型汇总
+│  │  ├─ schemas.py                   # Pydantic 请求/响应模型
+│  │  ├─ controller/                  # 当前主要 API 控制层（已在 main.py 使用）
+│  │  │  ├─ auth_controller.py
+│  │  │  ├─ health_data_controller.py
+│  │  │  ├─ ai_controller.py
+│  │  │  ├─ knowledge_controller.py
+│  │  │  └─ admin_controller.py
+│  │  ├─ service/                     # 业务服务层
+│  │  │  ├─ auth_service.py
+│  │  │  ├─ auth_profile_service.py
+│  │  │  ├─ blockchain_service.py
+│  │  │  ├─ blockchain_encryption_service.py
+│  │  │  ├─ ai_service.py
+│  │  │  ├─ rag_index_service.py
+│  │  │  └─ admin_service.py
+│  │  ├─ entity/                      # 分拆实体定义（与 models 并存）
+│  │  └─ features/                    # 新分层模块（admin/auth/ai/health_data/knowledge/rag）
+│  ├─ scripts/                        # 数据迁移、爬取、重建索引等脚本
+│  ├─ tests/                          # P0 自动化测试
 │  ├─ requirements.txt
 │  └─ seed_health.sql
 ├─ frontend/
-├─ docs/
-├─ contracts/
-└─ README.md
+│  ├─ src/
+│  │  ├─ main.js
+│  │  ├─ App.vue
+│  │  ├─ router/index.js              # 路由与登录态守卫
+│  │  ├─ api/
+│  │  │  ├─ core/http.js              # Axios 基础封装
+│  │  │  ├─ modules/                  # 推荐使用的模块化 API
+│  │  │  └─ *.js                      # 兼容保留 API
+│  │  ├─ views/
+│  │  │  ├─ Login.vue / Register.vue
+│  │  │  ├─ Dashboard.vue / Home.vue
+│  │  │  ├─ HealthData.vue / Profile.vue
+│  │  │  ├─ KnowledgeCenter.vue / KnowledgeArticleDetail.vue
+│  │  │  ├─ AiAssistant.vue
+│  │  │  ├─ AdminDashboard.vue / AdminHome.vue / AdminUsers.vue
+│  │  │  ├─ AdminKnowledgeBase.vue / AdminArticles.vue
+│  │  │  └─ admin/AdminSettings.vue / admin/AdminLogs.vue / admin/AdminHealthRecords.vue
+│  │  └─ utils/auth.js
+│  ├─ package.json
+│  └─ vite.config.js
+├─ contracts/                         # Solidity 合约与编译产物
+├─ docs/                              # 设计与测试文档
+├─ scripts/                           # 一键启动脚本（开发/生产）
+└─ test/                              # JS/性能测试与结果
 ```
 
 ---
 
-## 本地开发启动
+## 架构说明（重要）
 
-## 1. 准备 MySQL
+### 1) 后端当前“生效入口”
+`backend/app/main.py` 当前注册的是 `app/controller/*.py` 路由。
 
-默认配置见 `backend/app/config.py`：
+### 2) 代码中存在“两套组织方式”并行
+- 一套是 `controller + service + models/schemas`（当前运行主路径）
+- 一套是 `features/*`（模块化重构路径）
 
-- `DB_HOST=127.0.0.1`
-- `DB_PORT=3306`
-- `DB_USER=root`
-- `DB_PASSWORD=123456`
-- `DB_NAME=health`
+这不是错误，但会提升维护成本。后续建议逐步收敛到一套入口与分层。
 
-如需初始化数据库，可执行：
+### 3) 系统设置已经从“展示”改为“真实生效”
+已接入并生效的关键项包括：
+- 维护模式：`maintenance_mode`
+- 用户注册开关：`allow_user_register`
+- 社交登录开关：`allow_social_login`
+- 密码最小长度：`password_min_length`
+- 会话时长：`session_timeout_minutes`
+- AI 总开关：`ai_enabled`
+- 知识导入开关：`knowledge_import_enabled`
+- 默认健康数据公开策略：`default_health_data_public`
 
-```powershell
-mysql -u root -p < backend/seed_health.sql
-```
+---
 
-> `seed_health.sql` 会重建部分表结构，执行前请确认是否需要备份数据。
+## 快速启动（开发）
 
-## 2. 准备 Python 虚拟环境并安装后端依赖
+## 1. 后端
 
 ```powershell
 python -m venv .venv
 .\.venv\Scripts\activate
 pip install -r backend\requirements.txt
-```
-
-## 3. 启动 Qdrant
-
-```powershell
-docker run -d --name health-qdrant -p 6333:6333 ghcr.io/qdrant/qdrant/qdrant:v1.16.3
-```
-
-如容器已经存在，可直接启动：
-
-```powershell
-docker start health-qdrant
-```
-
-Qdrant 默认地址：
-
-- `http://127.0.0.1:6333`
-
-## 4. 准备 Ollama 模型
-
-确认本地已经拉取：
-
-```powershell
-ollama list
-```
-
-建议至少包含：
-
-- `deepseek-r1:8b`
-- `nomic-embed-text`
-
-若未安装，可执行：
-
-```powershell
-ollama run deepseek-r1:8b
-ollama run nomic-embed-text
-```
-
-## 5. 启动后端
-
-```powershell
 cd backend
 ..\.venv\Scripts\python.exe -m uvicorn app.main:app --host 127.0.0.1 --port 8000
 ```
 
-接口文档：
+文档地址：
+- `http://127.0.0.1:8000/docs`
 
-- Swagger：`http://127.0.0.1:8000/docs`
-- ReDoc：`http://127.0.0.1:8000/redoc`
-
-## 6. 启动前端
+## 2. 前端
 
 ```powershell
 cd frontend
@@ -161,205 +139,52 @@ npm install
 npm run dev
 ```
 
-默认访问地址：
-
+访问地址：
 - `http://127.0.0.1:3000`
+
+## 3. 依赖服务（可选但推荐）
+- MySQL
+- Ollama（大模型与 embedding）
+- Qdrant（向量库）
+- 本地区块链节点（链上存证场景）
 
 ---
 
-## AI 与向量 RAG 说明
+## 关键业务流（简版）
 
-当前项目中的 AI 问答已经接入本地 Ollama，并升级为向量检索版 RAG。
+1. 账号与密钥
+- 注册时生成钱包与密钥材料。
+- 启动补种子用户时，若缺失密钥会自动补齐（私钥材料/公钥/钱包地址）。
 
-### 当前实际方案
+2. 健康数据写入
+- 支持手动文本与 PDF/Word。
+- 私密数据使用 DEK 包裹加密；公开数据按公开策略处理。
+- 上链失败不再静默：接口返回 `onchain_warning`，并写系统告警日志。
 
-- **仅 `rag_knowledge_documents` 做向量化**
-- **`health_articles` 暂时不进入向量库**
-- 向量由本地 Ollama `nomic-embed-text` 生成
-- 向量库存储在 Qdrant 集合：`health_rag_documents`
-- 文档原文存储在 MySQL：`rag_knowledge_documents`
-- 文档分块元数据存储在 MySQL：`rag_knowledge_chunks`
+3. AI 问答
+- 支持用户公开数据与可选私密上下文参与问答。
+- 可结合知识库做 RAG 检索增强。
 
-### 索引构建流程
+---
 
-1. 管理端录入或导入知识文档
-2. 后端按配置进行文本分块
-3. 调用 Ollama embedding 接口生成向量
-4. 写入 Qdrant
-5. 同时把 chunk 元数据写入 `rag_knowledge_chunks`
-6. AI 问答时先检索向量，再把命中内容拼入 prompt
+## 测试与构建
 
-### 重建 RAG 索引
-
-当你批量导入、修改大量知识文档，或者想全量重建向量索引时，可以执行：
+前端构建：
 
 ```powershell
-.\.venv\Scripts\python.exe backend\scripts\rebuild_rag_index.py
+npm --prefix frontend run build
+```
+
+后端关键文件语法检查：
+
+```powershell
+python -m py_compile backend/app/main.py backend/app/controller/*.py backend/app/service/*.py
 ```
 
 ---
 
-## 关键配置项
+## 后续建议
 
-以下配置位于 `backend/app/config.py`，也可以通过环境变量覆盖：
-
-### 数据库
-- `DB_HOST`
-- `DB_PORT`
-- `DB_USER`
-- `DB_PASSWORD`
-- `DB_NAME`
-- `DATABASE_URL`
-
-### 管理员账号
-- `ADMIN_USERNAME`
-- `ADMIN_EMAIL`
-- `ADMIN_PASSWORD`
-- `ADMIN_REGISTER_KEY`
-
-### Ollama
-- `OLLAMA_BASE_URL`
-- `OLLAMA_MODEL`
-- `OLLAMA_TIMEOUT_SECONDS`
-- `OLLAMA_TEMPERATURE`
-- `OLLAMA_TOP_P`
-- `OLLAMA_TOP_K`
-- `OLLAMA_REPEAT_PENALTY`
-- `OLLAMA_NUM_PREDICT`
-- `OLLAMA_EMBEDDING_MODEL`
-- `OLLAMA_EMBEDDING_TIMEOUT_SECONDS`
-
-### RAG
-- `AI_RAG_LIMIT`（当前默认 `3`）
-- `AI_CHAT_HISTORY_LIMIT`
-- `RAG_VECTOR_ENABLED`
-- `RAG_VECTOR_COLLECTION`
-- `RAG_VECTOR_BASE_URL`
-- `RAG_VECTOR_TIMEOUT_SECONDS`
-- `RAG_VECTOR_TOP_K`
-- `RAG_VECTOR_SCORE_THRESHOLD`
-- `RAG_CHUNK_SIZE`
-- `RAG_CHUNK_OVERLAP`
-
-### 区块链
-- `WEB3_PROVIDER_URI`
-- `HEALTH_DATA_CONTRACT_ADDRESS`
-- `HEALTH_DATA_CONTRACT_ABI_JSON`
-
----
-
-## RAG 知识库如何录入数据
-
-当前已经提供完整的后台录入能力，推荐优先使用管理端页面或管理接口，而不是直接手改数据库。
-
-### 方式一：管理端手动新增
-
-适合：整理好的短篇知识、制度说明、健康建议、FAQ。
-
-可通过管理端知识库页面新增文档，填写：
-
-- 标题
-- 分类
-- 来源
-- 标签
-- 正文内容
-- 是否启用
-
-对应接口：
-
-- `GET /api/knowledge/admin/rag-docs`
-- `POST /api/knowledge/admin/rag-docs`
-- `PUT /api/knowledge/admin/rag-docs/{doc_id}`
-- `DELETE /api/knowledge/admin/rag-docs/{doc_id}`
-
-### 方式二：导入 PDF / DOCX
-
-适合：指南、科普手册、机构规范、讲义、医院宣教材料。
-
-对应接口：
-
-- `POST /api/knowledge/admin/rag-docs/import`
-
-说明：
-
-- 支持 `.pdf`、`.docx`
-- 导入后会提取文本并写入 `rag_knowledge_documents`
-- 同时自动同步向量索引
-
-### 方式三：导入示例知识
-
-适合本地联调或演示：
-
-- `POST /api/knowledge/admin/rag-docs/seed-defaults`
-
----
-
-## 推荐的数据采集与入库流程
-
-如果你要持续扩充 RAG 知识库，建议按下面流程做：
-
-1. **先选可信来源**
-   - 国家卫健委、疾控机构、医院官方宣教、临床指南、药品说明书、营养学权威资料
-2. **先做筛选和清洗**
-   - 去掉广告、版权页、目录、重复页、无关脚注
-3. **按主题拆分**
-   - 一个文档尽量只讲一个主题，例如：高血压、糖尿病饮食、睡眠管理
-4. **补齐元数据**
-   - 标题、分类、来源、标签、更新时间
-5. **优先导入结构清晰的内容**
-   - 段落清楚、语句完整、内容不要太短也不要特别杂
-6. **导入后做抽样问答测试**
-   - 用真实问题验证召回是否准确，例如“高血压怎么居家监测”
-7. **定期更新旧文档**
-   - 医疗健康内容具有时效性，过期内容建议停用或替换
-
----
-
-## 默认说明
-
-- 系统启动时会自动尝试建表和补充部分缺失字段
-- 默认管理员账号以 `backend/app/config.py` 中配置为准
-- 区块链能力属于可选能力，不影响 AI / RAG 主流程运行
-
----
-
-## 相关文档
-
-- `docs/ollama-ai-chat-integration.md`：本地大模型、AI 问答与 RAG 改造说明
-
----
-
-## 常用排查
-
-### 1. AI 没回答或回答为空
-检查：
-
-- Ollama 是否启动
-- `deepseek-r1:8b` 是否已安装
-- `OLLAMA_NUM_PREDICT` 是否过低
-
-### 2. RAG 检索不到内容
-检查：
-
-- Qdrant 是否已启动
-- `nomic-embed-text` 是否已安装
-- 是否已导入 `rag_knowledge_documents`
-- 是否已执行索引重建脚本
-- 文档是否为启用状态 `is_active=true`
-
-### 3. PDF / DOCX 导入失败
-检查：
-
-- 是否已安装 `pypdf`、`python-docx`
-- 文件是否损坏
-- 文件中是否真实包含可提取文本
-
----
-
-如果你后续要继续扩展 RAG，建议下一步增加：
-
-- 更细粒度 chunk 策略
-- 文档去重
-- 文档版本管理
-- 召回评估与命中率统计
-- 后台批量导入任务队列
+1. 统一后端分层入口（`controller` 与 `features` 逐步收敛）。
+2. 将 `HealthData.vue` 的授权演示（UI Mock）替换为完整后端授权流程（当前页面已有基础接口能力）。
+3. 增加“乱码/占位符”静态扫描到 CI，避免 `????` 与异常字符再次进入主分支。

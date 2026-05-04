@@ -9,7 +9,7 @@ import urllib.request
 from datetime import datetime
 from typing import Optional
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, status
 from fastapi.responses import StreamingResponse
 from sqlalchemy.orm import Session
 
@@ -35,6 +35,24 @@ from app.service.rag_index_service import RagIndexError, search_rag_knowledge
 
 router = APIRouter()
 logger = logging.getLogger(__name__)
+
+
+def _get_bool_system_setting(db: Session, key: str, default_value: bool) -> bool:
+    row = db.query(models.SystemSetting).filter(models.SystemSetting.setting_key == key).first()
+    if not row:
+        return default_value
+    try:
+        value = json.loads(row.setting_value)
+    except Exception:  # noqa: BLE001
+        return default_value
+    return bool(value)
+
+
+def _ensure_ai_service_enabled(db: Session) -> None:
+    if _get_bool_system_setting(db, "maintenance_mode", False):
+        raise HTTPException(status_code=status.HTTP_503_SERVICE_UNAVAILABLE, detail="System is under maintenance")
+    if not _get_bool_system_setting(db, "ai_enabled", True):
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="AI service is disabled")
 
 HEALTH_TERMS = ["健康", "血压", "血糖", "心率", "睡眠", "体重", "饮食", "运动", "慢病", "过敏", "体检"]
 
@@ -460,6 +478,7 @@ async def get_private_context_options(
     db: Session = Depends(get_db),
     current_user: models.User = Depends(get_current_user),
 ):
+    _ensure_ai_service_enabled(db)
     return schemas.AiPrivateContextOptionsResponse(items=build_private_context_options(db, current_user))
 
 
@@ -469,6 +488,7 @@ async def chat_with_ai(
     db: Session = Depends(get_db),
     current_user: models.User = Depends(get_current_user),
 ):
+    _ensure_ai_service_enabled(db)
     session_id = message.chat_id
     user_message = models.ChatMessage(
         user_id=current_user.id,
@@ -526,6 +546,7 @@ async def chat_with_ai_stream(
     db: Session = Depends(get_db),
     current_user: models.User = Depends(get_current_user),
 ):
+    _ensure_ai_service_enabled(db)
     session_id = message.chat_id
     user_message = models.ChatMessage(
         user_id=current_user.id,
@@ -612,6 +633,7 @@ async def get_chat_history(
     db: Session = Depends(get_db),
     current_user: models.User = Depends(get_current_user),
 ):
+    _ensure_ai_service_enabled(db)
     messages = (
         db.query(models.ChatMessage)
         .filter(
@@ -646,6 +668,7 @@ async def get_chat_messages(
     db: Session = Depends(get_db),
     current_user: models.User = Depends(get_current_user),
 ):
+    _ensure_ai_service_enabled(db)
     messages = (
         db.query(models.ChatMessage)
         .filter(models.ChatMessage.user_id == current_user.id, models.ChatMessage.session_id == chat_id)
@@ -664,6 +687,7 @@ async def delete_chat(
     db: Session = Depends(get_db),
     current_user: models.User = Depends(get_current_user),
 ):
+    _ensure_ai_service_enabled(db)
     deleted_count = (
         db.query(models.ChatMessage)
         .filter(models.ChatMessage.user_id == current_user.id, models.ChatMessage.session_id == chat_id)
@@ -679,6 +703,7 @@ async def get_health_recommendations(
     db: Session = Depends(get_db),
     current_user: models.User = Depends(get_current_user),
 ):
+    _ensure_ai_service_enabled(db)
     if current_user.id != user_id and current_user.role != "admin":
         raise HTTPException(status_code=403, detail="无权访问其他用户的建议")
 
@@ -717,6 +742,7 @@ async def get_home_health_advice(
     db: Session = Depends(get_db),
     current_user: models.User = Depends(get_current_user),
 ):
+    _ensure_ai_service_enabled(db)
     payload = load_cached_home_advice(current_user)
     if (
         not payload
@@ -740,6 +766,7 @@ async def analyze_health_data(
     db: Session = Depends(get_db),
     current_user: models.User = Depends(get_current_user),
 ):
+    _ensure_ai_service_enabled(db)
     user_id = analysis_data.get("user_id", current_user.id)
     if current_user.id != user_id and current_user.role != "admin":
         raise HTTPException(status_code=403, detail="无权分析其他用户的数据")

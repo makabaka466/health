@@ -95,7 +95,10 @@ class Settings:
     )
     WEB3_AUTO_FUND_NEW_USERS: bool = _env_bool("WEB3_AUTO_FUND_NEW_USERS", True)
     WEB3_AUTO_FUND_AMOUNT_ETH: str = os.getenv("WEB3_AUTO_FUND_AMOUNT_ETH", "10")
-    WEB3_FAUCET_FROM_ADDRESS: Optional[str] = os.getenv("WEB3_FAUCET_FROM_ADDRESS")
+    WEB3_FAUCET_FROM_ADDRESS: Optional[str] = os.getenv(
+        "WEB3_FAUCET_FROM_ADDRESS",
+        "0x8b08FA007A02238455cEC0C4b185fC2cb4aB8076",
+    )
     WEB3_GAS_PRICE_GWEI: str = os.getenv("WEB3_GAS_PRICE_GWEI", "2")
 
     # 跨域配置

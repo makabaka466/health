@@ -1,13 +1,12 @@
-<template>
+﻿<template>
   <div class="register-container">
-    <!-- 背景装饰 -->
     <div class="bg-decoration">
       <div class="bg-circle circle-1"></div>
       <div class="bg-circle circle-2"></div>
       <div class="bg-circle circle-3"></div>
       <div class="bg-circle circle-4"></div>
     </div>
-    
+
     <div class="register-box">
       <div class="register-header">
         <div class="logo">
@@ -20,7 +19,16 @@
         <h2>创建账号</h2>
         <p>加入健康管理系统，开启智能健康生活</p>
       </div>
-      
+
+      <el-alert
+        v-if="!canRegister"
+        :title="systemSettings.maintenance_mode ? '系统维护中，暂不可注册' : '当前已关闭用户注册'"
+        type="warning"
+        :closable="false"
+        show-icon
+        style="margin-bottom: 16px"
+      />
+
       <el-form
         ref="registerFormRef"
         :model="registerForm"
@@ -61,7 +69,7 @@
             />
           </div>
         </el-form-item>
-        
+
         <el-form-item prop="email">
           <div class="input-wrapper">
             <el-input
@@ -73,7 +81,7 @@
             />
           </div>
         </el-form-item>
-        
+
         <el-form-item prop="password">
           <div class="input-wrapper">
             <el-input
@@ -88,16 +96,12 @@
           </div>
           <div class="password-strength">
             <div class="strength-bar">
-              <div 
-                class="strength-fill" 
-                :class="passwordStrengthClass"
-                :style="{ width: passwordStrengthWidth }"
-              ></div>
+              <div class="strength-fill" :class="passwordStrengthClass" :style="{ width: passwordStrengthWidth }"></div>
             </div>
             <span class="strength-text">{{ passwordStrengthText }}</span>
           </div>
         </el-form-item>
-        
+
         <el-form-item prop="confirmPassword">
           <div class="input-wrapper">
             <el-input
@@ -112,7 +116,7 @@
             />
           </div>
         </el-form-item>
-        
+
         <el-form-item prop="agreement">
           <div class="agreement-wrapper">
             <el-checkbox v-model="agreeTerms" class="custom-checkbox">
@@ -123,20 +127,20 @@
             </el-checkbox>
           </div>
         </el-form-item>
-        
+
         <el-form-item>
           <el-button
             type="primary"
             class="register-button"
             :loading="loading"
-            :disabled="!agreeTerms"
+            :disabled="!agreeTerms || !canRegister"
             @click="handleRegister"
           >
             <span v-if="!loading">立即注册</span>
             <span v-else>注册中...</span>
           </el-button>
         </el-form-item>
-        
+
         <el-form-item>
           <div class="login-link">
             <span>已有账号？</span>
@@ -146,50 +150,38 @@
       </el-form>
     </div>
 
-    <!-- 服务协议对话框 -->
-    <el-dialog
-      v-model="termsDialogVisible"
-      title="用户服务协议"
-      width="600px"
-      append-to-body
-    >
+    <el-dialog v-model="termsDialogVisible" title="用户服务协议" width="600px" append-to-body>
       <div class="terms-content">
         <h3>1. 服务条款</h3>
-        <p>欢迎使用健康管理系统。使用本系统即表示您同意遵守以下条款...</p>
-        
+        <p>欢迎使用健康管理系统。使用本系统即表示您同意遵守相关服务条款。</p>
+
         <h3>2. 用户责任</h3>
-        <p>用户应对其账户下的所有活动负责，并承诺提供真实、准确的信息...</p>
-        
+        <p>用户应对账号下的活动负责，并保证所提供信息真实有效。</p>
+
         <h3>3. 隐私保护</h3>
-        <p>我们重视用户隐私，将按照隐私政策保护您的个人信息...</p>
-        
+        <p>我们重视用户隐私，并将依据隐私政策保护您的个人信息。</p>
+
         <h3>4. 知识产权</h3>
-        <p>本系统的所有内容受知识产权法保护，未经授权不得使用...</p>
+        <p>系统内相关内容受知识产权保护，未经授权不得擅自使用。</p>
       </div>
       <template #footer>
         <el-button @click="termsDialogVisible = false">关闭</el-button>
       </template>
     </el-dialog>
 
-    <!-- 隐私政策对话框 -->
-    <el-dialog
-      v-model="privacyDialogVisible"
-      title="隐私政策"
-      width="600px"
-      append-to-body
-    >
+    <el-dialog v-model="privacyDialogVisible" title="隐私政策" width="600px" append-to-body>
       <div class="privacy-content">
         <h3>1. 信息收集</h3>
-        <p>我们收集您主动提供的信息，包括但不限于用户名、邮箱、健康数据等...</p>
-        
+        <p>我们会收集您主动提供的信息，包括但不限于用户名、邮箱和健康数据。</p>
+
         <h3>2. 信息使用</h3>
-        <p>收集的信息将用于提供更好的服务体验和个性化健康建议...</p>
-        
+        <p>收集的信息用于提供更优质的服务体验和个性化健康建议。</p>
+
         <h3>3. 信息保护</h3>
-        <p>我们采用行业标准的安全措施保护您的个人信息...</p>
-        
+        <p>我们采用行业标准安全措施，保护您的个人信息安全。</p>
+
         <h3>4. 信息共享</h3>
-        <p>未经您的同意，我们不会向第三方共享您的个人信息...</p>
+        <p>未经您的明确授权，我们不会向第三方共享您的个人信息。</p>
       </div>
       <template #footer>
         <el-button @click="privacyDialogVisible = false">关闭</el-button>
@@ -202,7 +194,9 @@
 import { ref, reactive, computed, onMounted, watch } from 'vue'
 import { useRouter } from 'vue-router'
 import { ElMessage, ElMessageBox } from 'element-plus'
+import { UserFilled } from '@element-plus/icons-vue'
 import { registerUser } from '../api/auth'
+import { getPublicSystemSettings } from '../api/adminSystem'
 
 const router = useRouter()
 const registerFormRef = ref()
@@ -210,6 +204,13 @@ const loading = ref(false)
 const agreeTerms = ref(false)
 const termsDialogVisible = ref(false)
 const privacyDialogVisible = ref(false)
+const systemSettings = ref({
+  allow_user_register: true,
+  maintenance_mode: false,
+  password_min_length: 6
+})
+
+const canRegister = computed(() => !systemSettings.value.maintenance_mode && !!systemSettings.value.allow_user_register)
 
 const registerForm = reactive({
   username: '',
@@ -220,23 +221,18 @@ const registerForm = reactive({
   confirmPassword: ''
 })
 
-// 密码强度计算
 const passwordStrength = computed(() => {
   const password = registerForm.password
   if (!password) return 0
-  
+
   let strength = 0
-  
-  // 长度检查
   if (password.length >= 8) strength += 1
   if (password.length >= 12) strength += 1
-  
-  // 复杂度检查
   if (/[a-z]/.test(password)) strength += 1
   if (/[A-Z]/.test(password)) strength += 1
   if (/[0-9]/.test(password)) strength += 1
   if (/[^a-zA-Z0-9]/.test(password)) strength += 1
-  
+
   return Math.min(strength, 4)
 })
 
@@ -248,9 +244,7 @@ const passwordStrengthClass = computed(() => {
   return 'strong'
 })
 
-const passwordStrengthWidth = computed(() => {
-  return `${(passwordStrength.value / 4) * 100}%`
-})
+const passwordStrengthWidth = computed(() => `${(passwordStrength.value / 4) * 100}%`)
 
 const passwordStrengthText = computed(() => {
   const strength = passwordStrength.value
@@ -278,7 +272,7 @@ const registerRules = {
   username: [
     { required: true, message: '请输入用户名', trigger: 'blur' },
     { min: 3, max: 20, message: '用户名长度在 3 到 20 个字符', trigger: 'blur' },
-    { pattern: /^[a-zA-Z0-9_]+$/, message: '用户名只能包含字母、数字和下划线', trigger: 'blur' }
+    { pattern: /^[a-zA-Z0-9_]+$/, message: '用户名仅支持字母、数字和下划线', trigger: 'blur' }
   ],
   email: [
     { required: true, message: '请输入邮箱', trigger: 'blur' },
@@ -299,31 +293,43 @@ const registerRules = {
   ],
   password: [
     { required: true, message: '请输入密码', trigger: 'blur' },
-    { min: 6, max: 20, message: '密码长度在 6 到 20 个字符', trigger: 'blur' },
-    { 
+    {
+      validator: (_rule, value, callback) => {
+        const minLength = Number(systemSettings.value.password_min_length || 6)
+        if ((value || '').length < minLength) {
+          callback(new Error(`密码长度至少 ${minLength} 位`))
+          return
+        }
+        if ((value || '').length > 20) {
+          callback(new Error('密码长度不能超过 20 位'))
+          return
+        }
+        callback()
+      },
+      trigger: 'blur'
+    },
+    {
       validator: (_rule, value, callback) => {
         if (value && passwordStrength.value < 2) {
           callback(new Error('密码强度太弱，请使用更复杂的密码'))
           return
         }
         callback()
-      }, 
-      trigger: 'blur' 
+      },
+      trigger: 'blur'
     }
   ],
-  confirmPassword: [
-    { validator: validateConfirmPassword, trigger: 'blur' }
-  ],
+  confirmPassword: [{ validator: validateConfirmPassword, trigger: 'blur' }],
   agreement: [
-    { 
-      validator: (_rule, value, callback) => {
+    {
+      validator: (_rule, _value, callback) => {
         if (!agreeTerms.value) {
           callback(new Error('请阅读并同意服务协议和隐私政策'))
           return
         }
         callback()
-      }, 
-      trigger: 'change' 
+      },
+      trigger: 'change'
     }
   ]
 }
@@ -355,7 +361,7 @@ const buildRegisterSuccessHtml = (result) => {
   const sections = [
     '<p><strong>注册成功，请立即保存以下信息：</strong></p>',
     `<p><strong>钱包地址：</strong><br>${escapeHtml(result?.wallet_address || '-')}</p>`,
-    `<p><strong>私钥（只展示这一次）：</strong><br><span style="word-break: break-all;">${escapeHtml(result?.generated_private_key || '-')}</span></p>`
+    `<p><strong>私钥（仅展示一次）：</strong><br><span style="word-break: break-all;">${escapeHtml(result?.generated_private_key || '-')}</span></p>`
   ]
 
   if (result?.faucet_status === 'success') {
@@ -371,7 +377,7 @@ const buildRegisterSuccessHtml = (result) => {
     )
   }
 
-  sections.push('<p style="color:#e6a23c;"><strong>请务必离开页面前备份私钥，否则后续无法解锁私密健康数据。</strong></p>')
+  sections.push('<p style="color:#e6a23c;"><strong>请务必在离开页面前备份私钥，否则后续无法解锁私密健康数据。</strong></p>')
   return sections.join('')
 }
 
@@ -389,6 +395,11 @@ const goToLogin = () => {
 
 const handleRegister = async () => {
   if (!registerFormRef.value) return
+
+  if (!canRegister.value) {
+    ElMessage.warning(systemSettings.value.maintenance_mode ? '系统维护中，暂不可注册' : '当前已关闭用户注册')
+    return
+  }
 
   try {
     const valid = await registerFormRef.value.validate()
@@ -409,11 +420,11 @@ const handleRegister = async () => {
       confirmButtonText: '我已保存，去登录',
       dangerouslyUseHTMLString: true
     })
+
     router.push({
       path: '/login',
       query: { username: registerForm.username, registered: 'true' }
     })
-    
   } catch (error) {
     ElMessage.error(extractError(error, '注册失败，请重试'))
   } finally {
@@ -422,13 +433,22 @@ const handleRegister = async () => {
 }
 
 onMounted(() => {
-  // 添加页面加载动画
-  setTimeout(() => {
-    document.querySelector('.register-box')?.classList.add('show')
-  }, 100)
+  const bootstrap = async () => {
+    try {
+      const data = await getPublicSystemSettings()
+      systemSettings.value = { ...systemSettings.value, ...data }
+    } catch {
+      // keep defaults when settings endpoint is unavailable
+    }
+
+    setTimeout(() => {
+      document.querySelector('.register-box')?.classList.add('show')
+    }, 100)
+  }
+
+  bootstrap()
 })
 </script>
-
 <style scoped>
 .register-container {
   display: flex;
@@ -441,7 +461,7 @@ onMounted(() => {
   background: linear-gradient(135deg, #eef7ff 0%, #dceeff 100%);
 }
 
-/* 背景装饰 */
+/* ???? */
 .bg-decoration {
   position: absolute;
   top: 0;
@@ -714,7 +734,7 @@ onMounted(() => {
   transform: translateX(3px);
 }
 
-/* 对话框内容样式 */
+/* 响应式设计 */
 .terms-content,
 .privacy-content {
   max-height: 400px;
@@ -737,7 +757,7 @@ onMounted(() => {
   font-size: 14px;
 }
 
-/* Element Plus 样式覆盖 */
+/* Element Plus ???? */
 :deep(.el-input__wrapper) {
   border-radius: 12px;
   padding: 18px 24px;
@@ -823,7 +843,7 @@ onMounted(() => {
   border-top: 1px solid #f0f0f0;
 }
 
-/* 响应式设计 */
+/* ????? */
 @media (max-width: 480px) {
   .register-box {
     padding: 40px 30px;
@@ -844,7 +864,7 @@ onMounted(() => {
   }
 }
 
-/* 暗色模式适配 */
+/* ?????? */
 @media (prefers-color-scheme: dark) {
   .register-box {
     background: rgba(30, 30, 30, 0.95);
@@ -867,3 +887,5 @@ onMounted(() => {
   }
 }
 </style>
+
+

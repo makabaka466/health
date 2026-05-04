@@ -52,7 +52,7 @@ class HealthDataChainService:
         hex_value = value[2:] if value.startswith("0x") else value
         raw = bytes.fromhex(hex_value)
         if len(raw) != 32:
-            raise ValueError("bytes32 ??????? 32 ??")
+            raise ValueError("bytes32 value must be exactly 32 bytes")
         return raw
 
     def digest_to_bytes32(self, value: str) -> bytes:
@@ -107,14 +107,17 @@ class HealthDataChainService:
         encrypted_digest_source: str,
         data_type: str,
     ) -> dict[str, Any] | None:
+        """新增健康数据存证：调用合约 storeHealthData 并返回交易结果。"""
         if not self.enabled:
             return None
 
+        # 组装合约调用参数：业务哈希、密文摘要哈希、数据类型。
         function_call = self._contract.functions.storeHealthData(
             self.to_bytes32(data_hash_hex),
             self.digest_to_bytes32(encrypted_digest_source),
             data_type,
         )
+        # 发送链上交易并尝试从事件中解析 data_id。
         result = self._send_transaction(function_call, owner_private_key)
         if not result:
             return None
@@ -130,14 +133,17 @@ class HealthDataChainService:
         data_hash_hex: str,
         encrypted_digest_source: str,
     ) -> dict[str, Any] | None:
+        """更新已有存证：调用合约 updateHealthData 并返回交易结果。"""
         if not self.enabled:
             return None
 
+        # 使用已存在的 data_id 更新链上哈希与密文摘要哈希。
         function_call = self._contract.functions.updateHealthData(
             self.to_bytes32(data_id_hex),
             self.to_bytes32(data_hash_hex),
             self.digest_to_bytes32(encrypted_digest_source),
         )
+        # 提交更新交易，成功后沿用原 data_id 返回。
         result = self._send_transaction(function_call, owner_private_key)
         if not result:
             return None

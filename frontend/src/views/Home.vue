@@ -3,11 +3,8 @@
     <section class="hero-section">
       <div class="hero-copy">
         <span class="hero-kicker">SMART HEALTH</span>
-        <h1>欢迎回来，{{ greeting }}</h1>
-        <p>
-          今天是 {{ todayDate }}，这里为你聚合健康知识推荐、AI 个性化建议与快捷入口，
-          让日常健康管理更轻松、更直观。
-        </p>
+        <h1>{{ heroTitle }}</h1>
+        <p>{{ heroSubtitle }}</p>
         <div class="hero-actions">
           <el-button type="primary" size="large" round @click="router.push('/dashboard/health-data')">查看健康数据</el-button>
           <el-button size="large" round @click="router.push('/dashboard/knowledge-center')">进入知识中心</el-button>
@@ -209,6 +206,7 @@ import { computed, onActivated, onMounted, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { knowledgeApi } from '../api/knowledge'
 import { aiApi } from '../api/ai'
+import { getPublicSystemSettings } from '../api/adminSystem'
 
 const router = useRouter()
 const route = useRoute()
@@ -242,6 +240,14 @@ const aiHomeAdvice = ref({
   updated_at: ''
 })
 const aiHomeAdviceLoading = ref(true)
+const systemSettings = ref({
+  project_name: '健康管理系统',
+  project_subtitle: '智能健康管理助手',
+  homepage_banner_title: '',
+  homepage_banner_subtitle: '',
+  welcome_message: '',
+  ai_enabled: true
+})
 
 const todayDate = computed(() => {
   const now = new Date()
@@ -255,6 +261,16 @@ const greeting = computed(() => {
   if (hour < 14) return '中午好'
   if (hour < 18) return '下午好'
   return '晚上好'
+})
+
+const heroTitle = computed(() => {
+  const bannerTitle = systemSettings.value.homepage_banner_title
+  return bannerTitle || `欢迎回来，${greeting.value}`
+})
+
+const heroSubtitle = computed(() => {
+  const fromSettings = systemSettings.value.homepage_banner_subtitle || systemSettings.value.welcome_message
+  return fromSettings || '今天是健康管理的新一天，继续保持好状态。'
 })
 
 const handleActionClick = (action) => {
@@ -294,6 +310,17 @@ const loadRecommendations = async () => {
 }
 
 const loadAiHomeAdvice = async () => {
+  if (!systemSettings.value.ai_enabled) {
+    aiHomeAdvice.value = {
+      summary: 'AI 功能当前已关闭，请联系管理员开启。',
+      recommendations: [],
+      insights: [],
+      based_on_public_records: 0,
+      updated_at: ''
+    }
+    aiHomeAdviceLoading.value = false
+    return
+  }
   aiHomeAdviceLoading.value = true
   try {
     const data = await aiApi.getHomeAdvice()
@@ -318,8 +345,17 @@ const loadAiHomeAdvice = async () => {
 }
 
 onMounted(() => {
-  loadRecommendations()
-  loadAiHomeAdvice()
+  const bootstrap = async () => {
+    try {
+      const data = await getPublicSystemSettings()
+      systemSettings.value = { ...systemSettings.value, ...data }
+    } catch {
+      // keep defaults when settings endpoint is unavailable
+    }
+    loadRecommendations()
+    loadAiHomeAdvice()
+  }
+  bootstrap()
 })
 
 onActivated(() => {

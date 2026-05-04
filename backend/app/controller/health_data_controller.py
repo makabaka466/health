@@ -1,10 +1,11 @@
+import asyncio
 import base64
 import hashlib
 import json
 from datetime import date, datetime, timedelta
 from typing import List, Optional
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy import or_
 from sqlalchemy.orm import Session
 
@@ -28,6 +29,7 @@ from app.service.blockchain_encryption_service import (
     generate_data_encryption_key,
     normalize_private_key,
     private_key_to_public_key,
+    rewrap_dek_for_recipient,
     unwrap_dek_with_private_key,
     verify_user_private_key,
     wrap_dek_for_public_key,
@@ -51,6 +53,17 @@ UPLOAD_SIZE_LIMITS = {
 def _invalidate_home_advice_if_needed(db: Session, user: models.User, should_refresh: bool) -> None:
     if should_refresh:
         invalidate_user_home_advice(db, user)
+
+
+def _get_bool_system_setting(db: Session, key: str, default_value: bool) -> bool:
+    row = db.query(models.SystemSetting).filter(models.SystemSetting.setting_key == key).first()
+    if not row:
+        return default_value
+    try:
+        value = json.loads(row.setting_value)
+    except Exception:  # noqa: BLE001
+        return default_value
+    return bool(value)
 
 
 def _normalized_file_type(file_type: Optional[str]) -> str:
@@ -334,6 +347,8 @@ def _serialize_record(
     private_key: Optional[str] = None,
     current_user: Optional[models.User] = None,
     wrapped_dek: Optional[str] = None,
+    include_file_data: bool = True,
+    onchain_warning: Optional[str] = None,
 ) -> dict:
     data_content, file_bytes, requires_private_key = _resolve_record_values(
         record,
@@ -348,7 +363,7 @@ def _serialize_record(
     )
 
     pdf_data_base64 = None
-    if file_bytes:
+    if include_file_data and file_bytes:
         mime_type = record.file_mime_type or _default_mime_type(record.file_type) or "application/octet-stream"
         pdf_data_base64 = f"data:{mime_type};base64," + base64.b64encode(file_bytes).decode("utf-8")
 
@@ -366,8 +381,10 @@ def _serialize_record(
         "onchain_verification_status": onchain_verification_status,
         "onchain_data_id": record.onchain_data_id,
         "onchain_tx_hash": record.onchain_tx_hash,
+        "onchain_warning": onchain_warning,
         "onchain_verified": onchain_verified,
         "onchain_verification_message": onchain_verification_message,
+        "recorded_at": record.created_at,
         "created_at": record.created_at,
         "updated_at": record.updated_at,
     }
@@ -429,10 +446,14 @@ async def create_health_record(
     db: Session = Depends(get_db),
     current_user: models.User = Depends(get_current_user)
 ):
-    """Create a health data record."""
+    """创建健康记录"""
+    recorded_at = health_data.recorded_at
     file_type = _normalized_file_type(health_data.file_type)
     file_bytes, file_size, file_mime_type = _decode_upload_data(file_type, health_data.pdf_data_base64)
-    is_public = bool(health_data.is_public)
+    if "is_public" in health_data.model_fields_set:
+        is_public = bool(health_data.is_public)
+    else:
+        is_public = _get_bool_system_setting(db, "default_health_data_public", False)
     effective_private_key, chain_private_key = _resolve_effective_private_key(current_user, health_data.private_key)
     if not is_public and not effective_private_key:
         raise HTTPException(status_code=400, detail="当前账号缺少可用私钥，无法保存私密健康数据")
@@ -467,6 +488,10 @@ async def create_health_record(
         elif record_dek:
             encrypted_pdf_data = encrypt_binary_with_dek(file_bytes, record_dek)
 
+    record_kwargs = {}
+    if recorded_at:
+        record_kwargs["created_at"] = recorded_at
+
     db_record = models.HealthData(
         user_id=current_user.id,
         data_title=health_data.data_title,
@@ -480,6 +505,7 @@ async def create_health_record(
         encryption_version=encryption_version,
         pdf_size=file_size,
         is_public=is_public,
+        **record_kwargs,
     )
 
     source_payload = _build_source_payload(
@@ -489,9 +515,15 @@ async def create_health_record(
         file_mime_type=file_mime_type,
     )
     data_hash_hex = _hash_payload(source_payload)
+    onchain_warning = None
+    if not chain_private_key and source_payload and data_hash_hex:
+        onchain_warning = "链上存证未执行：当前账号缺少可用私钥"
+    elif chain_private_key and not chain_service.enabled and source_payload and data_hash_hex:
+        onchain_warning = "链上存证未执行：区块链服务未启用或合约不可用"
     if chain_private_key and source_payload and data_hash_hex:
         try:
-            chain_result = chain_service.store_health_data(
+            chain_result = await asyncio.to_thread(
+                chain_service.store_health_data,
                 owner_private_key=chain_private_key,
                 data_hash_hex=data_hash_hex,
                 encrypted_digest_source=source_payload,
@@ -500,6 +532,10 @@ async def create_health_record(
             if chain_result:
                 db_record.onchain_tx_hash = chain_result.get("tx_hash")
                 db_record.onchain_data_id = chain_result.get("data_id")
+                if not db_record.onchain_data_id:
+                    onchain_warning = "链上交易已发送，但未解析到链上数据ID，请检查合约事件"
+            else:
+                onchain_warning = "链上存证未执行：区块链服务返回空结果"
         except Exception as exc:  # noqa: BLE001
             raise HTTPException(status_code=400, detail=f"上链失败：{exc}") from exc
 
@@ -514,11 +550,19 @@ async def create_health_record(
         ),
         operator_id=current_user.id,
     )
+    if onchain_warning:
+        AdminSystemService(db).log(
+            level="WARN",
+            module="health_records",
+            action="onchain_warning",
+            message=f"健康数据上链告警：{onchain_warning}，record_title={health_data.data_title or '-'}",
+            operator_id=current_user.id,
+        )
     db.commit()
     db.refresh(db_record)
     _invalidate_home_advice_if_needed(db, current_user, db_record.is_public)
 
-    return _serialize_record(db_record, effective_private_key, current_user)
+    return _serialize_record(db_record, effective_private_key, current_user, onchain_warning=onchain_warning)
 
 
 @router.get("/records", response_model=List[schemas.HealthDataResponse])
@@ -578,7 +622,7 @@ async def update_health_record(
     ).first()
 
     if not record:
-        raise HTTPException(status_code=404, detail="?????????")
+        raise HTTPException(status_code=404, detail="健康数据记录不存在")
 
     was_public = bool(record.is_public)
     previous_file_type = record.file_type
@@ -589,12 +633,14 @@ async def update_health_record(
 
     if "data_title" in update_data:
         record.data_title = update_data["data_title"]
+    if "recorded_at" in update_data and update_data["recorded_at"] is not None:
+        record.created_at = update_data["recorded_at"]
 
     target_is_public = bool(update_data.get("is_public", record.is_public))
     target_file_type = _normalized_file_type(update_data.get("file_type", record.file_type))
 
     if not target_is_public and not effective_private_key:
-        raise HTTPException(status_code=400, detail="?????????????????????")
+        raise HTTPException(status_code=400, detail="当前账号缺少可用私钥，无法更新私密健康数据")
 
     existing_content, existing_file_bytes, was_locked = _resolve_record_values(
         record,
@@ -612,7 +658,7 @@ async def update_health_record(
         if "data_content" in update_data:
             payload_content = update_data["data_content"] or ""
         elif previous_file_type != "text":
-            raise HTTPException(status_code=400, detail="?????????????? data_content")
+            raise HTTPException(status_code=400, detail="更新为文本记录时必须提供 data_content")
         payload_file_bytes = None
         payload_file_mime_type = None
         payload_file_size = None
@@ -620,19 +666,19 @@ async def update_health_record(
         if "pdf_data_base64" in update_data:
             decoded_file, decoded_size, detected_mime_type = _decode_upload_data(target_file_type, update_data["pdf_data_base64"])
             if not decoded_file:
-                raise HTTPException(status_code=400, detail="???????")
+                raise HTTPException(status_code=400, detail="上传文件内容无效")
             payload_file_bytes = decoded_file
             payload_file_size = decoded_size
             payload_file_mime_type = detected_mime_type
         elif previous_file_type != target_file_type:
-            raise HTTPException(status_code=400, detail="???????????????????")
+            raise HTTPException(status_code=400, detail="切换文件类型时必须重新上传文件内容")
         payload_content = None
 
     encryption_rewrite_required = any(
         key in update_data for key in {"is_public", "file_type", "data_content", "pdf_data_base64"}
     )
     if encryption_rewrite_required and was_locked:
-        raise HTTPException(status_code=400, detail="?????????????????????")
+        raise HTTPException(status_code=400, detail="记录仍处于锁定状态，请提供正确私钥后重试")
 
     record.is_public = target_is_public
     record.file_type = target_file_type
@@ -673,17 +719,25 @@ async def update_health_record(
         file_mime_type=record.file_mime_type,
     )
     data_hash_hex = _hash_payload(source_payload)
+    onchain_warning = None
+    if not chain_private_key and source_payload and data_hash_hex:
+        onchain_warning = "链上存证未执行：当前账号缺少可用私钥"
+    elif chain_private_key and not chain_service.enabled and source_payload and data_hash_hex:
+        onchain_warning = "链上存证未执行：区块链服务未启用或合约不可用"
+
     if chain_private_key and source_payload and data_hash_hex:
         try:
             if record.onchain_data_id:
-                chain_result = chain_service.update_health_data(
+                chain_result = await asyncio.to_thread(
+                    chain_service.update_health_data,
                     owner_private_key=chain_private_key,
                     data_id_hex=record.onchain_data_id,
                     data_hash_hex=data_hash_hex,
                     encrypted_digest_source=source_payload,
                 )
             else:
-                chain_result = chain_service.store_health_data(
+                chain_result = await asyncio.to_thread(
+                    chain_service.store_health_data,
                     owner_private_key=chain_private_key,
                     data_hash_hex=data_hash_hex,
                     encrypted_digest_source=source_payload,
@@ -692,29 +746,41 @@ async def update_health_record(
             if chain_result:
                 record.onchain_tx_hash = chain_result.get("tx_hash")
                 record.onchain_data_id = chain_result.get("data_id") or record.onchain_data_id
+                if not record.onchain_data_id:
+                    onchain_warning = "链上交易已发送，但未解析到链上数据ID，请检查合约事件"
+            else:
+                onchain_warning = "链上存证未执行：区块链服务返回空结果"
         except Exception as exc:  # noqa: BLE001
-            raise HTTPException(status_code=400, detail=f"?????{exc}") from exc
+            raise HTTPException(status_code=400, detail=f"上链失败：{exc}") from exc
 
     AdminSystemService(db).log(
         level="INFO",
         module="health_records",
         action="update",
         message=(
-            f"???????????ID?{record.id}????{target_file_type}??????"
-            f"{'??' if record.is_public else '??'}"
+            f"用户更新健康数据，记录ID：{record.id}，类型：{target_file_type}，公开状态："
+            f"{'公开' if record.is_public else '私密'}"
         ),
         operator_id=current_user.id,
     )
+    if onchain_warning:
+        AdminSystemService(db).log(
+            level="WARN",
+            module="health_records",
+            action="onchain_warning",
+            message=f"健康数据上链告警：{onchain_warning}，record_id={record.id}",
+            operator_id=current_user.id,
+        )
     db.commit()
     db.refresh(record)
     _invalidate_home_advice_if_needed(db, current_user, was_public or record.is_public)
-    return _serialize_record(record, effective_private_key, current_user)
+    return _serialize_record(record, effective_private_key, current_user, onchain_warning=onchain_warning)
 
 
 @router.get("/public/records", response_model=List[schemas.HealthDataResponse])
 async def get_public_health_records(
-    skip: int = 0,
-    limit: int = 100,
+    skip: int = Query(0, ge=0, le=10000),
+    limit: int = Query(20, ge=1, le=100),
     db: Session = Depends(get_db),
 ):
     records = (
@@ -725,7 +791,7 @@ async def get_public_health_records(
         .limit(limit)
         .all()
     )
-    return [_serialize_record(item) for item in records]
+    return [_serialize_record(item, include_file_data=False) for item in records]
 
 
 @router.get("/public/records/{record_id}", response_model=schemas.HealthDataResponse)
@@ -764,7 +830,7 @@ async def get_record_grants(
         models.HealthData.user_id == current_user.id,
     ).first()
     if not record:
-        raise HTTPException(status_code=404, detail="?????????")
+        raise HTTPException(status_code=404, detail="健康数据记录不存在")
 
     grants = (
         db.query(models.HealthDataGrant)
@@ -788,27 +854,29 @@ async def create_record_grant(
         models.HealthData.user_id == current_user.id,
     ).first()
     if not record:
-        raise HTTPException(status_code=404, detail="?????????")
+        raise HTTPException(status_code=404, detail="健康数据记录不存在")
     if record.is_public:
-        raise HTTPException(status_code=400, detail="????????")
+        raise HTTPException(status_code=400, detail="公开记录无需授权")
     if payload.grantee_user_id == current_user.id:
-        raise HTTPException(status_code=400, detail="???????")
+        raise HTTPException(status_code=400, detail="不能给自己授权")
 
     grantee = db.query(models.User).filter(models.User.id == payload.grantee_user_id).first()
     if not grantee or not grantee.is_active:
-        raise HTTPException(status_code=404, detail="????????")
+        raise HTTPException(status_code=404, detail="被授权用户不存在或不可用")
 
     effective_private_key, _ = _resolve_effective_private_key(current_user, private_key)
     if not effective_private_key:
-        raise HTTPException(status_code=400, detail="?????????????")
+        raise HTTPException(status_code=400, detail="当前账号缺少可用私钥，无法完成授权")
 
     _ensure_record_dek_mode(record, current_user, effective_private_key)
-    owner_dek = unwrap_dek_with_private_key(record.owner_encrypted_dek, effective_private_key)
-
     grantee_public_key = _resolve_grantee_public_key(grantee)
     if not grantee_public_key:
-        raise HTTPException(status_code=400, detail="???????????")
-    wrapped_for_grantee = wrap_dek_for_public_key(owner_dek, grantee_public_key)
+        raise HTTPException(status_code=400, detail="被授权用户缺少可用加密公钥")
+    wrapped_for_grantee = rewrap_dek_for_recipient(
+        record.owner_encrypted_dek,
+        effective_private_key,
+        grantee_public_key,
+    )
 
     now = datetime.utcnow()
     expires_at = now + timedelta(days=int(payload.expires_days or 30))
@@ -853,13 +921,13 @@ async def revoke_record_grant(
 ):
     grant = db.query(models.HealthDataGrant).filter(models.HealthDataGrant.id == grant_id).first()
     if not grant:
-        raise HTTPException(status_code=404, detail="???????")
+        raise HTTPException(status_code=404, detail="授权记录不存在")
     if grant.owner_user_id != current_user.id:
-        raise HTTPException(status_code=403, detail="???????")
+        raise HTTPException(status_code=403, detail="无权撤销该授权")
     if grant.revoked_at is None:
         grant.revoked_at = datetime.utcnow()
         db.commit()
-    return {"message": "?????"}
+    return {"message": "撤销成功"}
 
 
 @router.get("/shared/records", response_model=List[schemas.HealthDataResponse])
@@ -915,7 +983,7 @@ async def get_shared_health_record(
 ):
     effective_private_key, _ = _resolve_effective_private_key(current_user, private_key)
     if not effective_private_key:
-        raise HTTPException(status_code=403, detail="???????????????")
+        raise HTTPException(status_code=403, detail="当前账号缺少可用私钥，无法查看共享私密数据")
 
     now = datetime.utcnow()
     grant = (
@@ -931,14 +999,14 @@ async def get_shared_health_record(
         .first()
     )
     if not grant:
-        raise HTTPException(status_code=404, detail="???????")
+        raise HTTPException(status_code=404, detail="未找到可用授权")
 
     record = db.query(models.HealthData).filter(
         models.HealthData.id == record_id,
         models.HealthData.is_public.is_(False),
     ).first()
     if not record:
-        raise HTTPException(status_code=404, detail="???????")
+        raise HTTPException(status_code=404, detail="共享记录不存在")
 
     return _serialize_record(
         record,
@@ -989,9 +1057,12 @@ async def get_health_summary(
     """获取健康数据摘要统计"""
     effective_private_key, _ = _resolve_effective_private_key(current_user, private_key)
 
-    records = db.query(models.HealthData).filter(
-        models.HealthData.user_id == current_user.id
-    ).all()
+    records = (
+        db.query(models.HealthData)
+        .filter(models.HealthData.user_id == current_user.id)
+        .order_by(models.HealthData.created_at.desc())
+        .all()
+    )
 
     if not records:
         return {
@@ -1003,7 +1074,7 @@ async def get_health_summary(
         }
 
     total_records = len(records)
-    latest_record = records[0] if records else None
+    latest_record = records[0]
 
     weights = []
     heart_rates = []

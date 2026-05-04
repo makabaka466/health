@@ -1,3 +1,4 @@
+import asyncio
 import json
 import logging
 import re
@@ -6,13 +7,13 @@ from pathlib import Path
 from datetime import datetime
 from typing import List, Optional
 
-from fastapi import APIRouter, Depends, File, Form, HTTPException, Query, UploadFile, status
+from fastapi import APIRouter, BackgroundTasks, Depends, File, Form, HTTPException, Query, UploadFile, status
 from sqlalchemy import desc, func, or_
 from sqlalchemy.orm import Session
 
 from app import models, schemas
 from app.config import settings
-from app.database import get_db
+from app.database import SessionLocal, get_db
 from app.service.admin_service import AdminSystemService
 from app.features.auth.dependencies import get_current_user
 from app.service.rag_index_service import RagIndexError, delete_rag_document_index, sync_rag_document_index
@@ -31,6 +32,22 @@ except ImportError:  # pragma: no cover
 
 router = APIRouter()
 logger = logging.getLogger(__name__)
+
+
+def _get_bool_system_setting(db: Session, key: str, default_value: bool) -> bool:
+    row = db.query(models.SystemSetting).filter(models.SystemSetting.setting_key == key).first()
+    if not row:
+        return default_value
+    try:
+        value = json.loads(row.setting_value)
+    except Exception:  # noqa: BLE001
+        return default_value
+    return bool(value)
+
+
+def _ensure_knowledge_import_enabled(db: Session) -> None:
+    if not _get_bool_system_setting(db, "knowledge_import_enabled", True):
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Knowledge import is disabled")
 
 
 DEFAULT_RAG_DOCS = [
@@ -300,6 +317,34 @@ def _delete_rag_index_safely(db: Session, doc_id: int) -> None:
         delete_rag_document_index(db, doc_id)
     except RagIndexError as exc:
         logger.warning("RAG 向量索引删除失败 doc_id=%s: %s", doc_id, exc)
+
+
+def _sync_rag_index_safely_by_id(doc_id: int) -> None:
+    db = SessionLocal()
+    try:
+        doc = db.query(models.RagKnowledgeDocument).filter(models.RagKnowledgeDocument.id == doc_id).first()
+        if not doc:
+            return
+        _sync_rag_index_safely(db, doc)
+    finally:
+        db.close()
+
+
+def _delete_rag_index_safely_by_id(doc_id: int) -> None:
+    db = SessionLocal()
+    try:
+        _delete_rag_index_safely(db, doc_id)
+    finally:
+        db.close()
+
+
+def _enqueue_rag_sync(background_tasks: BackgroundTasks, doc_ids: List[int]) -> None:
+    for doc_id in doc_ids:
+        background_tasks.add_task(_sync_rag_index_safely_by_id, doc_id)
+
+
+def _enqueue_rag_delete(background_tasks: BackgroundTasks, doc_id: int) -> None:
+    background_tasks.add_task(_delete_rag_index_safely_by_id, doc_id)
 
 
 def _record_read_history(db: Session, user_id: int, article_id: int) -> None:
@@ -625,6 +670,7 @@ async def import_articles(
 ):
     _assert_admin(current_user)
     _assert_category(category)
+    _ensure_knowledge_import_enabled(db)
 
     if not files:
         raise HTTPException(status_code=400, detail="请至少选择一个文件")
@@ -642,7 +688,7 @@ async def import_articles(
             continue
 
         try:
-            content = _extract_import_text(filename, file_bytes)
+            content = await asyncio.to_thread(_extract_import_text, filename, file_bytes)
         except HTTPException:
             raise
         except Exception as exc:
@@ -813,6 +859,7 @@ async def list_rag_docs(
 @router.post("/admin/rag-docs", response_model=schemas.RagKnowledgeDocResponse)
 async def create_rag_doc(
     payload: schemas.RagKnowledgeDocCreate,
+    background_tasks: BackgroundTasks = None,
     db: Session = Depends(get_db),
     current_user: models.User = Depends(get_current_user),
 ):
@@ -835,7 +882,8 @@ async def create_rag_doc(
     )
     db.commit()
     db.refresh(doc)
-    _sync_rag_index_safely(db, doc)
+    if background_tasks is not None:
+        _enqueue_rag_sync(background_tasks, [doc.id])
     return _to_rag_doc_response(doc)
 
 
@@ -954,10 +1002,12 @@ async def import_rag_docs(
     source: Optional[str] = Form(None),
     tags: Optional[str] = Form(None),
     is_active: bool = Form(True),
+    background_tasks: BackgroundTasks = None,
     db: Session = Depends(get_db),
     current_user: models.User = Depends(get_current_user),
 ):
     _assert_admin(current_user)
+    _ensure_knowledge_import_enabled(db)
 
     if not files:
         raise HTTPException(status_code=400, detail="请至少选择一个文件")
@@ -975,7 +1025,7 @@ async def import_rag_docs(
             continue
 
         try:
-            content = _extract_import_text(filename, file_bytes)
+            content = await asyncio.to_thread(_extract_import_text, filename, file_bytes)
         except HTTPException:
             raise
         except Exception as exc:
@@ -1010,9 +1060,12 @@ async def import_rag_docs(
         operator_id=current_user.id,
     )
     db.commit()
+    doc_ids: List[int] = []
     for doc in imported_docs:
         db.refresh(doc)
-        _sync_rag_index_safely(db, doc)
+        doc_ids.append(doc.id)
+    if background_tasks is not None:
+        _enqueue_rag_sync(background_tasks, doc_ids)
 
     return schemas.RagKnowledgeImportResponse(
         items=[_to_rag_doc_response(doc) for doc in imported_docs],
@@ -1024,10 +1077,12 @@ async def import_rag_docs(
 
 @router.post("/admin/rag-docs/seed-defaults", response_model=schemas.RagKnowledgeImportResponse)
 async def seed_default_rag_docs(
+    background_tasks: BackgroundTasks,
     db: Session = Depends(get_db),
     current_user: models.User = Depends(get_current_user),
 ):
     _assert_admin(current_user)
+    _ensure_knowledge_import_enabled(db)
 
     created_docs: List[models.RagKnowledgeDocument] = []
     skipped_files: List[str] = []
@@ -1057,9 +1112,11 @@ async def seed_default_rag_docs(
         created_docs.append(doc)
 
     db.commit()
+    doc_ids: List[int] = []
     for doc in created_docs:
         db.refresh(doc)
-        _sync_rag_index_safely(db, doc)
+        doc_ids.append(doc.id)
+    _enqueue_rag_sync(background_tasks, doc_ids)
 
     return schemas.RagKnowledgeImportResponse(
         items=[_to_rag_doc_response(doc) for doc in created_docs],
@@ -1077,6 +1134,7 @@ async def seed_default_rag_docs(
 async def update_rag_doc(
     doc_id: int,
     payload: schemas.RagKnowledgeDocUpdate,
+    background_tasks: BackgroundTasks,
     db: Session = Depends(get_db),
     current_user: models.User = Depends(get_current_user),
 ):
@@ -1101,13 +1159,14 @@ async def update_rag_doc(
     )
     db.commit()
     db.refresh(doc)
-    _sync_rag_index_safely(db, doc)
+    _enqueue_rag_sync(background_tasks, [doc.id])
     return _to_rag_doc_response(doc)
 
 
 @router.delete("/admin/rag-docs/{doc_id}")
 async def delete_rag_doc(
     doc_id: int,
+    background_tasks: BackgroundTasks,
     db: Session = Depends(get_db),
     current_user: models.User = Depends(get_current_user),
 ):
@@ -1116,7 +1175,7 @@ async def delete_rag_doc(
     if not doc:
         raise HTTPException(status_code=404, detail="知识库文档不存在")
 
-    _delete_rag_index_safely(db, doc.id)
+    _enqueue_rag_delete(background_tasks, doc.id)
     db.delete(doc)
     AdminSystemService(db).log(
         level="INFO",

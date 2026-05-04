@@ -44,7 +44,7 @@ class AiAdminRagP0Tests(BackendP0TestCase):
         self.assertEqual(create_record.status_code, 200, create_record.text)
 
         with patch(
-            "app.features.ai.router._call_ollama",
+            "app.controller.ai_controller._call_ollama",
             return_value=json.dumps(
                 {
                     "summary": "这是首页建议摘要",
@@ -84,8 +84,8 @@ class AiAdminRagP0Tests(BackendP0TestCase):
         option_ids = [item["id"] for item in private_options.json()["items"]]
         self.assertIn("profile:self", option_ids)
 
-        with patch("app.features.ai.router._rag_context", return_value=("知识库上下文", ["Knowledge: Demo"])), patch(
-            "app.features.ai.router._call_ollama",
+        with patch("app.controller.ai_controller._rag_context", return_value=("知识库上下文", ["Knowledge: Demo"])), patch(
+            "app.controller.ai_controller._call_ollama",
             return_value="这是 AI 回复",
         ):
             response = self.client.post(
@@ -112,8 +112,8 @@ class AiAdminRagP0Tests(BackendP0TestCase):
             yield "你好"
             yield "，世界"
 
-        with patch("app.features.ai.router._rag_context", return_value=("知识库上下文", ["Knowledge: Stream"])), patch(
-            "app.features.ai.router._stream_ollama",
+        with patch("app.controller.ai_controller._rag_context", return_value=("知识库上下文", ["Knowledge: Stream"])), patch(
+            "app.controller.ai_controller._stream_ollama",
             side_effect=fake_stream,
         ):
             with self.client.stream(
@@ -180,7 +180,7 @@ class AiAdminRagP0Tests(BackendP0TestCase):
         ]
 
         with patch.object(settings, "RAG_VECTOR_ENABLED", True), patch(
-            "app.features.knowledge.router.get_points",
+            "app.controller.knowledge_controller.get_points",
             return_value=fake_points,
         ):
             chunks = self.client.get(

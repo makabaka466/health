@@ -120,7 +120,8 @@ class ProfileAndHealthP0Tests(BackendP0TestCase):
 
         private_detail_without_key = self.client.get(f"/api/health/records/{private_record_id}", headers=headers)
         self.assertEqual(private_detail_without_key.status_code, 200, private_detail_without_key.text)
-        self.assertTrue(private_detail_without_key.json()["requires_private_key"])
+        # 当前后端支持使用账户内安全存储的私钥自动解密本人私密记录
+        self.assertFalse(private_detail_without_key.json()["requires_private_key"])
 
         private_detail_with_key = self.client.get(
             f"/api/health/records/{private_record_id}",
@@ -138,7 +139,8 @@ class ProfileAndHealthP0Tests(BackendP0TestCase):
         self.assertEqual(summary.status_code, 200, summary.text)
         summary_data = summary.json()
         self.assertEqual(summary_data["total_records"], 2)
-        self.assertEqual(summary_data["average_weight"], 70)
+        # 当前后端可自动解密用户本人私密记录，摘要统计包含公开+私密记录
+        self.assertEqual(summary_data["average_weight"], 76)
 
     def test_pdf_record_can_be_public_and_visible_in_public_feed(self) -> None:
         user = self.register_user()

@@ -404,7 +404,7 @@
           style="margin-bottom: 14px"
         />
         <div class="grant-record-meta">
-          <el-tag type="primary" size="small">??ID?{{ grantTargetRecord.id }}</el-tag>
+          <el-tag type="primary" size="small">记录ID：{{ grantTargetRecord.id }}</el-tag>
           <el-tag size="small">{{ formatDate(grantTargetRecord.recorded_at) }}</el-tag>
           <el-tag :type="grantTargetRecord.is_private ? 'warning' : 'success'" size="small">
             {{ grantTargetRecord.is_private ? privateText : publicText }}
@@ -415,14 +415,14 @@
           <el-form-item :label="doctorFieldLabel">
             <el-select v-model="grantForm.doctor_id" :placeholder="doctorFieldPlaceholder" style="width: 100%">
               <el-option
-                v-for="doctor in doctorSamples"
-                :key="doctor.id"
-                :label="`${doctor.name}?${doctor.title} / ${doctor.department}?`"
-                :value="doctor.id"
+                v-for="adminUser in grantableUsers"
+                :key="adminUser.id"
+                :label="`${adminUser.username}（管理员）`"
+                :value="adminUser.id"
               >
                 <div class="doctor-option">
-                  <span class="doctor-option__name">{{ doctor.name }}</span>
-                  <span class="doctor-option__meta">{{ doctor.title }} ? {{ doctor.department }} ? {{ doctor.hospital }}</span>
+                  <span class="doctor-option__name">{{ adminUser.username }}</span>
+                  <span class="doctor-option__meta">系统管理员</span>
                 </div>
               </el-option>
             </el-select>
@@ -437,30 +437,52 @@
         </el-form>
 
         <div class="grant-actions">
-          <el-button type="primary" @click="addMockGrant">{{ addGrantText }}</el-button>
+          <el-button type="primary" @click="addGrant">{{ addGrantText }}</el-button>
         </div>
 
         <div class="grant-list">
           <div class="grant-list__header">{{ grantedListTitle }}</div>
           <el-empty v-if="currentRecordGrants.length === 0" :description="emptyGrantListText" />
           <el-table v-else :data="currentRecordGrants" size="small" border>
-            <el-table-column prop="doctor_name" label="??" min-width="120" />
-            <el-table-column prop="doctor_department" label="??" min-width="110" />
-            <el-table-column prop="doctor_hospital" label="??" min-width="140" />
-            <el-table-column prop="expires_days" label="???(?)" width="100" />
-            <el-table-column label="????" min-width="160">
+            <el-table-column prop="grantee_username" label="被授权用户" min-width="140" />
+            <el-table-column label="有效期(天)" width="100">
               <template #default="scope">
-                {{ formatDate(scope.row.granted_at) }}
+                {{ resolveExpiresDays(scope.row) }}
               </template>
             </el-table-column>
-            <el-table-column label="??" min-width="160">
+            <el-table-column label="到期时间" min-width="170">
+              <template #default="scope">
+                {{ formatDate(scope.row.expires_at) }}
+              </template>
+            </el-table-column>
+            <el-table-column label="状态" width="100">
+              <template #default="scope">
+                <el-tag :type="resolveGrantStatus(scope.row).type" size="small">
+                  {{ resolveGrantStatus(scope.row).label }}
+                </el-tag>
+              </template>
+            </el-table-column>
+            <el-table-column label="授权时间" min-width="160">
+              <template #default="scope">
+                {{ formatDate(scope.row.created_at) }}
+              </template>
+            </el-table-column>
+            <el-table-column label="备注" min-width="160">
               <template #default="scope">
                 {{ scope.row.remark || '-' }}
               </template>
             </el-table-column>
-            <el-table-column label="??" width="100" fixed="right">
+            <el-table-column label="操作" width="100" fixed="right">
               <template #default="scope">
-                <el-button type="danger" text @click="removeMockGrant(scope.row.id)">{{ revokeText }}</el-button>
+                <el-button
+                  v-if="!scope.row.revoked_at"
+                  type="danger"
+                  text
+                  @click="revokeGrant(scope.row.id)"
+                >
+                  {{ revokeText }}
+                </el-button>
+                <span v-else style="color: #909399;">-</span>
               </template>
             </el-table-column>
           </el-table>
@@ -473,10 +495,14 @@
 import { ref, computed, onMounted, onActivated } from 'vue'
 import { ElMessage } from 'element-plus'
 import { healthApi } from '../api/health'
+import { getPublicSystemSettings } from '../api/adminSystem'
 
 const healthRecords = ref([])
 const healthSummary = ref({})
 const healthAnalysis = ref({})
+const systemSettings = ref({
+  default_health_data_public: false
+})
 const dialogVisible = ref(false)
 const isEditing = ref(false)
 const formMode = ref('manual')
@@ -486,7 +512,8 @@ const privatePreviewDialogVisible = ref(false)
 const privatePreviewRecord = ref(null)
 const grantDialogVisible = ref(false)
 const grantTargetRecord = ref(null)
-const mockGrants = ref([])
+const grantableUsers = ref([])
+const recordGrants = ref([])
 const grantForm = ref({
   doctor_id: '',
   expires_days: 30,
@@ -502,7 +529,7 @@ const healthForm = ref({
   blood_sugar: null,
   other_text: '',
   record_type: 'manual',
-  is_private: false,
+  is_private: true,
   health_data_file_name: null,
   health_data_file: null,
   recorded_at: new Date()
@@ -537,7 +564,7 @@ const privateViewFailedText = '\u67e5\u770b\u79c1\u5bc6\u6570\u636e\u5931\u8d25'
 const editText = '\u7f16\u8f91'
 const replacePdfText = '\u7f16\u8f91'
 const deleteText = '\u5220\u9664'
-const grantText = '??'
+const grantText = '授权'
 const viewPdfText = '\u67e5\u770bPDF'
 const downloadWordText = '\u4e0b\u8f7dWord'
 const onchainColumnText = '\u94fe\u4e0a\u9a8c\u771f'
@@ -552,24 +579,18 @@ const onchainFailedText = '\u9a8c\u771f\u5931\u8d25'
 const loadFailedText = '\u52a0\u8f7d\u5065\u5eb7\u6570\u636e\u5931\u8d25'
 const analysisSuccessText = '\u5065\u5eb7\u5206\u6790\u5b8c\u6210'
 const analysisFailedText = '\u5065\u5eb7\u5206\u6790\u5931\u8d25'
-const grantDialogTitle = '??????????'
-const grantDialogTip = '????????? UI????????????'
-const doctorFieldLabel = '????'
-const doctorFieldPlaceholder = '???????'
-const expiryFieldLabel = '???'
-const expiryFieldSuffix = '?'
-const remarkFieldLabel = '??'
-const remarkFieldPlaceholder = '???????????????'
-const addGrantText = '????'
-const grantedListTitle = '???????????????'
-const emptyGrantListText = '??????'
-const revokeText = '??'
-
-const doctorSamples = [
-  { id: 'doctor_demo_001', name: '???', title: '????', department: '???', hospital: '???????' },
-  { id: 'doctor_demo_002', name: '???', title: '?????', department: '????', hospital: '?????' },
-  { id: 'doctor_demo_003', name: '???', title: '????', department: '?????', hospital: '??????' }
-]
+const grantDialogTitle = '数据授权管理'
+const grantDialogTip = '可将私密数据授权给管理员账号查看。'
+const doctorFieldLabel = '授权对象'
+const doctorFieldPlaceholder = '请选择管理员'
+const expiryFieldLabel = '有效期'
+const expiryFieldSuffix = '天'
+const remarkFieldLabel = '备注'
+const remarkFieldPlaceholder = '可选：填写授权用途、就诊时间等说明'
+const addGrantText = '添加授权'
+const grantedListTitle = '当前记录已授权对象'
+const emptyGrantListText = '暂无授权记录'
+const revokeText = '撤销'
 
 const fileAccept = computed(() => (
   '.pdf,.doc,.docx,application/pdf,application/msword,application/vnd.openxmlformats-officedocument.wordprocessingml.document'
@@ -667,7 +688,7 @@ const toViewRecord = (record) => {
     health_data_file_name: fileType === 'manual'
       ? null
       : (record.data_title || (fileType === 'word' ? '健康数据Word' : '健康数据PDF')),
-    recorded_at: record.created_at,
+    recorded_at: record.recorded_at || record.created_at,
     weight: metrics.weight ?? null,
     height: metrics.height ?? null,
     blood_pressure: bloodPressure,
@@ -820,12 +841,11 @@ const latestRecordDate = computed(() => {
   return formatDate(healthRecords.value[0].recorded_at)
 })
 const currentRecordGrants = computed(() => {
-  if (!grantTargetRecord.value) return []
-  return mockGrants.value
-    .filter((item) => item.record_id === grantTargetRecord.value.id)
-    .sort((a, b) => new Date(b.granted_at).getTime() - new Date(a.granted_at).getTime())
+  return [...recordGrants.value].sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime())
 })
 const latestRecordLabel = computed(() => (healthRecords.value.length ? '已同步最近记录' : '暂无记录'))
+
+const defaultIsPrivate = computed(() => !systemSettings.value.default_health_data_public)
 
 const openManualDialog = () => {
   formMode.value = 'manual'
@@ -839,7 +859,7 @@ const openManualDialog = () => {
     blood_sugar: null,
     other_text: '',
     record_type: 'manual',
-    is_private: false,
+    is_private: defaultIsPrivate.value,
     health_data_file_name: null,
     health_data_file: null,
     recorded_at: new Date()
@@ -859,7 +879,7 @@ const openFileDialog = () => {
     blood_sugar: null,
     other_text: '',
     record_type: 'pdf',
-    is_private: false,
+    is_private: defaultIsPrivate.value,
     health_data_file_name: null,
     health_data_file: null,
     recorded_at: new Date()
@@ -1012,6 +1032,7 @@ const saveHealthData = async () => {
         : (healthForm.value.health_data_file_name || (healthForm.value.record_type === 'word' ? '健康数据Word' : '健康数据PDF')),
       file_type: formMode.value === 'manual' ? 'text' : healthForm.value.record_type,
       is_public: !healthForm.value.is_private,
+      recorded_at: healthForm.value.recorded_at ? new Date(healthForm.value.recorded_at).toISOString() : null,
       data_content: formMode.value === 'manual'
         ? JSON.stringify({ metrics, other_text: healthForm.value.other_text || '' })
         : null,
@@ -1061,45 +1082,85 @@ const resetGrantForm = () => {
 }
 
 const openGrantDialog = (record) => {
+  if (!record?.is_private) {
+    ElMessage.warning('公开记录无需授权')
+    return
+  }
   grantTargetRecord.value = record
   resetGrantForm()
   grantDialogVisible.value = true
+  loadGrantableUsers()
+  loadRecordGrants(record.id)
 }
 
-const addMockGrant = () => {
+const addGrant = async () => {
   if (!grantTargetRecord.value) return
   if (!grantForm.value.doctor_id) {
-    ElMessage.warning('??????')
+    ElMessage.warning('请选择授权对象')
     return
   }
 
-  const doctor = doctorSamples.find((item) => item.id === grantForm.value.doctor_id)
-  if (!doctor) {
-    ElMessage.error('???????')
+  const selectedAdmin = grantableUsers.value.find((item) => item.id === grantForm.value.doctor_id)
+  if (!selectedAdmin) {
+    ElMessage.error('授权对象不存在')
     return
   }
-
-  mockGrants.value.unshift({
-    id: `grant_${Date.now()}_${Math.random().toString(16).slice(2, 8)}`,
-    record_id: grantTargetRecord.value.id,
-    doctor_id: doctor.id,
-    doctor_name: doctor.name,
-    doctor_department: doctor.department,
-    doctor_hospital: doctor.hospital,
-    expires_days: Number(grantForm.value.expires_days) || 30,
-    remark: (grantForm.value.remark || '').trim(),
-    granted_at: new Date().toISOString()
-  })
-
-  ElMessage.success('??????????????')
-  resetGrantForm()
+  try {
+    await healthApi.createRecordGrant(grantTargetRecord.value.id, {
+      grantee_user_id: selectedAdmin.id,
+      expires_days: Number(grantForm.value.expires_days) || 30,
+      remark: (grantForm.value.remark || '').trim()
+    })
+    ElMessage.success('授权成功')
+    resetGrantForm()
+    await loadRecordGrants(grantTargetRecord.value.id)
+  } catch (error) {
+    ElMessage.error(extractErrorDetail(error, '授权失败，请稍后重试'))
+  }
 }
 
-const removeMockGrant = (grantId) => {
-  const before = mockGrants.value.length
-  mockGrants.value = mockGrants.value.filter((item) => item.id !== grantId)
-  if (mockGrants.value.length !== before) {
-    ElMessage.success('????????????')
+const revokeGrant = async (grantId) => {
+  if (!grantTargetRecord.value) return
+  try {
+    await healthApi.revokeRecordGrant(grantId)
+    ElMessage.success('授权记录已撤销')
+    await loadRecordGrants(grantTargetRecord.value.id)
+  } catch (error) {
+    ElMessage.error(extractErrorDetail(error, '撤销授权失败，请稍后重试'))
+  }
+}
+
+const resolveGrantStatus = (grant) => {
+  if (grant?.revoked_at) return { label: '已撤销', type: 'info' }
+  if (grant?.expires_at && new Date(grant.expires_at).getTime() <= Date.now()) {
+    return { label: '已过期', type: 'warning' }
+  }
+  return { label: '生效中', type: 'success' }
+}
+
+const resolveExpiresDays = (grant) => {
+  if (!grant?.created_at || !grant?.expires_at) return '-'
+  const ms = new Date(grant.expires_at).getTime() - new Date(grant.created_at).getTime()
+  const days = Math.round(ms / (24 * 60 * 60 * 1000))
+  return days > 0 ? days : 0
+}
+
+const loadGrantableUsers = async () => {
+  try {
+    const users = await healthApi.getGrantableUsers()
+    grantableUsers.value = (users || []).filter((item) => item.role === 'admin')
+  } catch (error) {
+    grantableUsers.value = []
+    ElMessage.error(extractErrorDetail(error, '加载授权对象失败'))
+  }
+}
+
+const loadRecordGrants = async (recordId) => {
+  try {
+    recordGrants.value = await healthApi.getRecordGrants(recordId)
+  } catch (error) {
+    recordGrants.value = []
+    ElMessage.error(extractErrorDetail(error, '加载授权记录失败'))
   }
 }
 
@@ -1113,6 +1174,15 @@ const loadHealthData = async () => {
     healthSummary.value = summary
   } catch (error) {
     ElMessage.error(extractErrorDetail(error, loadFailedText))
+  }
+}
+
+const loadPublicSettings = async () => {
+  try {
+    const data = await getPublicSystemSettings()
+    systemSettings.value = { ...systemSettings.value, ...data }
+  } catch {
+    // keep defaults when settings endpoint is unavailable
   }
 }
 
@@ -1142,7 +1212,7 @@ const openUnlockedAttachment = (record) => {
   if (record.record_type === 'word') {
     const link = document.createElement('a')
     link.href = record.health_data_file
-    link.download = record.health_data_file_name || '????.docx'
+    link.download = record.health_data_file_name || '健康数据.docx'
     link.target = '_blank'
     link.rel = 'noopener noreferrer'
     link.click()
@@ -1163,7 +1233,8 @@ const openAttachment = async (record) => {
   openUnlockedAttachment(record)
 }
 
-onMounted(() => {
+onMounted(async () => {
+  await loadPublicSettings()
   loadHealthData()
 })
 

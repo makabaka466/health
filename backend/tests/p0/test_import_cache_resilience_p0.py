@@ -88,7 +88,7 @@ class ImportCacheResilienceTests(BackendP0TestCase):
         record_id = create_record.json()["id"]
 
         with patch(
-            "app.features.ai.router._call_ollama",
+            "app.controller.ai_controller._call_ollama",
             return_value=json.dumps(
                 {
                     "summary": "缓存已生成",
@@ -135,7 +135,7 @@ class ImportCacheResilienceTests(BackendP0TestCase):
         user = self.register_user()
         login_data = self.login_user(user["_raw_username"], user["_raw_password"])
 
-        with patch("app.features.ai.router._call_ollama", side_effect=RuntimeError("Ollama 连接失败")):
+        with patch("app.controller.ai_controller._call_ollama", side_effect=RuntimeError("Ollama 连接失败")):
             response = self.client.post(
                 "/api/ai/chat",
                 json={"message": "你好"},
@@ -152,7 +152,7 @@ class ImportCacheResilienceTests(BackendP0TestCase):
             raise RuntimeError("Ollama 连接失败")
             yield  # pragma: no cover
 
-        with patch("app.features.ai.router._stream_ollama", side_effect=broken_stream):
+        with patch("app.controller.ai_controller._stream_ollama", side_effect=broken_stream):
             with self.client.stream(
                 "POST",
                 "/api/ai/chat/stream",

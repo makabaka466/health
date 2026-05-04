@@ -3,7 +3,12 @@ import json
 from sqlalchemy.orm import Session
 
 from app import models
-from app.schemas import AdminHealthRecordListResponse, AdminHealthRecordSummaryResponse, AdminSystemSettings
+from app.schemas import (
+    AdminHealthRecordListResponse,
+    AdminHealthRecordSummaryResponse,
+    AdminSystemSettings,
+    PublicSystemSettings,
+)
 
 
 DEFAULT_SETTINGS = AdminSystemSettings().model_dump()
@@ -20,6 +25,10 @@ class AdminSystemService:
 
         payload = {item.setting_key: self._parse_value(item.setting_value) for item in rows}
         return AdminSystemSettings(**{**DEFAULT_SETTINGS, **payload})
+
+    def get_public_settings(self) -> PublicSystemSettings:
+        raw = self.get_settings().model_dump()
+        return PublicSystemSettings(**raw)
 
     def update_settings(self, settings: AdminSystemSettings, operator_id: int | None = None) -> AdminSystemSettings:
         data = settings.model_dump()

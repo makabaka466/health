@@ -26,7 +26,7 @@ def private_key_to_address(private_key: str) -> str:
     return Account.from_key(normalized_key).address
 
 # 计算私钥的 SHA-256 哈希值。
-# 通常用于在不存储明文私钥的情况下，验证用户输入的私钥是否与之前记录的一致。
+# 用于在不存储明文私钥的情况下，验证用户输入的私钥是否与之前记录的一致。
 def private_key_hash(private_key: str) -> str:
     normalized_key = normalize_private_key(private_key)
     return hashlib.sha256(normalized_key.encode("utf-8")).hexdigest()
@@ -140,20 +140,27 @@ def _derive_wrap_key(shared_secret: bytes) -> bytes:
 
 
 def wrap_dek_for_public_key(dek: bytes, public_key_hex: str) -> str:
+    """用目标用户公钥包装 DEK。"""
     if len(dek) != 32:
         raise ValueError("DEK 必须是 32 字节")
+    # 1 读取目标用户公钥
     recipient_public = _load_public_key(public_key_hex)
+    # 2 生成临时密钥并计算共享密钥
     ephemeral_private = ec.generate_private_key(ec.SECP256K1())
     shared_secret = ephemeral_private.exchange(ec.ECDH(), recipient_public)
+    # 3 从共享密钥生成包裹 DEK 的对称密钥
     wrap_key = _derive_wrap_key(shared_secret)
 
+    # 4 用对称密钥加密 DEK
     nonce = os.urandom(12)
     ciphertext = AESGCM(wrap_key).encrypt(nonce, dek, b"health-dek")
+    # 5 导出临时公钥，后续解包时会用到
     ephemeral_public = ephemeral_private.public_key().public_bytes(
         encoding=serialization.Encoding.X962,
         format=serialization.PublicFormat.UncompressedPoint,
     )
 
+    # 6 组装返回
     payload = {
         "v": 1,
         "epk": base64.urlsafe_b64encode(ephemeral_public).decode("utf-8"),
@@ -164,9 +171,11 @@ def wrap_dek_for_public_key(dek: bytes, public_key_hex: str) -> str:
 
 
 def unwrap_dek_with_private_key(wrapped_payload: str, private_key: str) -> bytes:
+    """用接收方私钥解包 DEK，返回原始 32 字节 DEK。"""
     if not wrapped_payload:
         raise ValueError("缺少被包装的 DEK")
     try:
+        # 1) 解析包装载荷并取出临时公钥、随机数、密文
         payload = json.loads(wrapped_payload)
         ephemeral_public = base64.urlsafe_b64decode(payload["epk"].encode("utf-8"))
         nonce = base64.urlsafe_b64decode(payload["n"].encode("utf-8"))
@@ -174,6 +183,7 @@ def unwrap_dek_with_private_key(wrapped_payload: str, private_key: str) -> bytes
     except Exception as exc:  # noqa: BLE001
         raise ValueError("DEK 包装数据格式非法") from exc
 
+    # 2) 用自己的私钥和临时公钥恢复共享密钥
     private = _load_private_key(private_key)
     peer_public = ec.EllipticCurvePublicKey.from_encoded_point(ec.SECP256K1(), ephemeral_public)
     shared_secret = private.exchange(ec.ECDH(), peer_public)
@@ -183,6 +193,16 @@ def unwrap_dek_with_private_key(wrapped_payload: str, private_key: str) -> bytes
         return AESGCM(wrap_key).decrypt(nonce, ciphertext, b"health-dek")
     except Exception as exc:  # noqa: BLE001
         raise ValueError("私钥错误或 DEK 包装已损坏") from exc
+
+
+def rewrap_dek_for_recipient(
+    owner_wrapped_dek: str,
+    owner_private_key: str,
+    recipient_public_key: str,
+) -> str:
+    """先用所有者私钥解包 DEK，再用接收方公钥重包 DEK。"""
+    owner_dek = unwrap_dek_with_private_key(owner_wrapped_dek, owner_private_key)
+    return wrap_dek_for_public_key(owner_dek, recipient_public_key)
 
 
 # 验证用户私钥是否正确。

@@ -18,8 +18,18 @@
             </el-icon>
           </div>
         </div>
-        <h2>健康管理系统</h2>
-        <p>您的智能健康管理助手</p>
+        <h2>{{ projectName }}</h2>
+        <p>{{ projectSubtitle }}</p>
+      </div>
+
+      <div v-if="systemSettings.maintenance_mode" class="quick-login-tip">
+        <el-alert
+          title="系统维护中"
+          type="warning"
+          description="普通用户功能可能受限，请稍后再试或联系管理员。"
+          show-icon
+          :closable="false"
+        />
       </div>
 
       <div v-if="queryRegistered" class="quick-login-tip">
@@ -84,7 +94,7 @@
           <span class="divider-text">或</span>
         </el-divider>
 
-        <el-form-item>
+        <el-form-item v-if="allowSocialLogin">
           <div class="social-login">
             <el-button class="social-btn wechat-btn" :loading="socialLoading === 'wechat'" @click="handleSocialLogin('wechat')">
               <el-icon><ChatDotRound /></el-icon>
@@ -97,7 +107,7 @@
           </div>
         </el-form-item>
 
-        <el-form-item>
+        <el-form-item v-if="allowUserRegister">
           <div class="register-link">
             <span>还没有账号？</span>
             <el-link type="primary" :underline="false" class="register-btn" @click="goToRegister">立即注册</el-link>
@@ -150,6 +160,7 @@ import { computed, onMounted, reactive, ref } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { ElMessage } from 'element-plus'
 import { loginUser, socialCompleteProfile, socialLoginInit } from '../api/auth'
+import { getPublicSystemSettings } from '../api/adminSystem'
 
 const router = useRouter()
 const route = useRoute()
@@ -164,9 +175,20 @@ const socialLoading = ref('')
 const socialProfileVisible = ref(false)
 const socialCompleteLoading = ref(false)
 const socialTicket = ref('')
+const systemSettings = ref({
+  project_name: '健康管理系统',
+  project_subtitle: '您的智能健康管理助手',
+  allow_user_register: true,
+  allow_social_login: true,
+  maintenance_mode: false
+})
 
 const queryRegistered = computed(() => route.query.registered === 'true')
 const queryUsername = computed(() => route.query.username || '')
+const projectName = computed(() => systemSettings.value.project_name || '健康管理系统')
+const projectSubtitle = computed(() => systemSettings.value.project_subtitle || '您的智能健康管理助手')
+const allowUserRegister = computed(() => !systemSettings.value.maintenance_mode && !!systemSettings.value.allow_user_register)
+const allowSocialLogin = computed(() => !systemSettings.value.maintenance_mode && !!systemSettings.value.allow_social_login)
 
 const loginForm = reactive({
   username: queryUsername.value || '',
@@ -252,6 +274,10 @@ const persistLogin = (payload, fallbackUsername = '') => {
 }
 
 const goToRegister = () => {
+  if (!allowUserRegister.value) {
+    ElMessage.warning(systemSettings.value.maintenance_mode ? '系统维护中，暂不可注册' : '当前已关闭用户注册')
+    return
+  }
   router.push('/register')
 }
 
@@ -278,6 +304,10 @@ const handleSendResetEmail = async () => {
 }
 
 const handleSocialLogin = async (platform) => {
+  if (!allowSocialLogin.value) {
+    ElMessage.warning(systemSettings.value.maintenance_mode ? '系统维护中，暂不可使用社交登录' : '当前已关闭社交登录')
+    return
+  }
   try {
     socialLoading.value = platform
     const codeKey = `social_mock_code_${platform}`
@@ -352,9 +382,18 @@ const handleLogin = async () => {
 }
 
 onMounted(() => {
-  setTimeout(() => {
-    document.querySelector('.login-box')?.classList.add('show')
-  }, 100)
+  const bootstrap = async () => {
+    try {
+      const data = await getPublicSystemSettings()
+      systemSettings.value = { ...systemSettings.value, ...data }
+    } catch {
+      // keep defaults when settings endpoint is unavailable
+    }
+    setTimeout(() => {
+      document.querySelector('.login-box')?.classList.add('show')
+    }, 100)
+  }
+  bootstrap()
 })
 </script>
 

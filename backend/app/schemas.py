@@ -298,6 +298,7 @@ class HealthDataBase(BaseModel):
     pdf_data_base64: Optional[str] = None
     pdf_size: Optional[int] = None
     is_public: bool = False
+    recorded_at: Optional[datetime] = None
 
 class HealthDataCreate(HealthDataBase):
     private_key: Optional[str] = None
@@ -313,8 +314,10 @@ class HealthDataResponse(HealthDataBase):
     onchain_verification_status: Optional[str] = None
     onchain_data_id: Optional[str] = None
     onchain_tx_hash: Optional[str] = None
+    onchain_warning: Optional[str] = None
     onchain_verified: Optional[bool] = None
     onchain_verification_message: Optional[str] = None
+    recorded_at: datetime
     created_at: datetime
     updated_at: datetime
     
@@ -432,6 +435,22 @@ class AdminSystemSettings(BaseModel):
     homepage_banner_subtitle: str = "聚合健康数据、知识内容与 AI 分析能力"
     password_min_length: int = 6
     log_retention_days: int = 30
+
+
+class PublicSystemSettings(BaseModel):
+    project_name: str = "健康管理系统"
+    project_subtitle: str = "智能健康数据与知识服务平台"
+    welcome_message: str = "欢迎使用健康管理系统，请根据角色进入对应工作台。"
+    homepage_banner_title: str = "科学管理健康，智能辅助决策"
+    homepage_banner_subtitle: str = "聚合健康数据、知识内容与 AI 分析能力"
+    support_email: str = "support@health.local"
+    support_phone: str = "400-800-2026"
+    allow_user_register: bool = True
+    allow_social_login: bool = True
+    ai_enabled: bool = True
+    knowledge_import_enabled: bool = True
+    maintenance_mode: bool = False
+    default_health_data_public: bool = False
 
 
 class AdminSystemLogResponse(BaseModel):

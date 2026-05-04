@@ -13,10 +13,16 @@ from app.schemas import (
     AdminHealthRecordListResponse,
     AdminSystemLogResponse,
     AdminSystemSettings,
+    PublicSystemSettings,
 )
 
 
 router = APIRouter()
+
+
+@router.get("/public-settings", response_model=PublicSystemSettings)
+async def get_public_system_settings(db: Session = Depends(get_db)):
+    return AdminSystemService(db).get_public_settings()
 
 
 @router.get("/settings", response_model=AdminSystemSettings)

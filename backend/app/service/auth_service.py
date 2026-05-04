@@ -1,6 +1,8 @@
+import asyncio
 import base64
 import hashlib
 from datetime import datetime, timedelta
+from decimal import Decimal, InvalidOperation
 
 from cryptography.fernet import Fernet, InvalidToken
 from eth_account import Account
@@ -100,7 +102,7 @@ class AuthService:
         if requested_role == "admin" and user.admin_register_key != settings.ADMIN_REGISTER_KEY:
             raise ValueError("管理员密钥错误")
 
-        return self._create_user_account(
+        return await self._create_user_account(
             username=user.username,
             email=user.email,
             password=user.password,
@@ -136,7 +138,7 @@ class AuthService:
         if existing_bind:
             raise ValueError("该第三方账号已绑定系统用户，请直接使用第三方登录")
 
-        return self._create_user_account(
+        return await self._create_user_account(
             username=payload.username,
             email=payload.email,
             password=payload.password,
@@ -146,7 +148,7 @@ class AuthService:
             social_nickname=nickname,
         )
 
-    def _create_user_account(
+    async def _create_user_account(
         self,
         username: str,
         email: str,
@@ -194,11 +196,11 @@ class AuthService:
         self.db.add(db_user)
         self.db.commit()
         self.db.refresh(db_user)
-        faucet_result = self._auto_fund_wallet(account.address)
+        faucet_result = await self._auto_fund_wallet(account.address)
         return db_user, generated_private_key, faucet_result
 
     @staticmethod
-    def _auto_fund_wallet(wallet_address: str) -> dict:
+    async def _auto_fund_wallet(wallet_address: str) -> dict:
         result = {
             "faucet_enabled": bool(settings.WEB3_AUTO_FUND_NEW_USERS),
             "faucet_status": "disabled" if not settings.WEB3_AUTO_FUND_NEW_USERS else "pending",
@@ -217,7 +219,11 @@ class AuthService:
             return result
 
         try:
-            funding = chain_service.grant_test_eth(wallet_address, amount_eth=settings.WEB3_AUTO_FUND_AMOUNT_ETH)
+            funding = await asyncio.to_thread(
+                chain_service.grant_test_eth,
+                wallet_address,
+                amount_eth=settings.WEB3_AUTO_FUND_AMOUNT_ETH,
+            )
             if not funding:
                 result["faucet_status"] = "unavailable"
                 result["faucet_error"] = "Faucet transaction was not sent"
@@ -226,6 +232,75 @@ class AuthService:
             result["faucet_status"] = "success" if funding.get("status") == 1 else "failed"
             result["faucet_tx_hash"] = funding.get("tx_hash")
             result["wallet_balance_eth"] = funding.get("wallet_balance_eth")
+            if result["faucet_status"] != "success":
+                result["faucet_error"] = "Faucet transaction reverted"
+            return result
+        except Exception as exc:  # noqa: BLE001
+            result["faucet_status"] = "failed"
+            result["faucet_error"] = str(exc)
+            return result
+
+    @staticmethod
+    async def ensure_wallet_min_balance_on_login(
+        user: models.User,
+        *,
+        min_balance_eth: str | int | float = "10",
+        grant_amount_eth: str | int | float = "10",
+    ) -> dict:
+        wallet_address = AuthService.get_user_wallet_address(user)
+        result = {
+            "faucet_enabled": True,
+            "faucet_status": "pending",
+            "min_balance_eth": str(min_balance_eth),
+            "grant_amount_eth": str(grant_amount_eth),
+            "wallet_address": wallet_address,
+            "wallet_balance_eth": None,
+            "faucet_tx_hash": None,
+            "faucet_error": None,
+        }
+
+        if not wallet_address:
+            result["faucet_status"] = "no_wallet"
+            result["faucet_error"] = "User wallet address is missing"
+            return result
+
+        if not chain_service.rpc_connected:
+            result["faucet_status"] = "unavailable"
+            result["faucet_error"] = "Ganache RPC is not connected"
+            return result
+
+        try:
+            threshold = Decimal(str(min_balance_eth))
+            current_balance_raw = await asyncio.to_thread(chain_service.get_balance_eth, wallet_address)
+            current_balance = Decimal(str(current_balance_raw))
+            result["wallet_balance_eth"] = str(current_balance)
+        except (InvalidOperation, ValueError) as exc:
+            result["faucet_status"] = "failed"
+            result["faucet_error"] = f"Invalid balance value: {exc}"
+            return result
+        except Exception as exc:  # noqa: BLE001
+            result["faucet_status"] = "failed"
+            result["faucet_error"] = str(exc)
+            return result
+
+        if current_balance >= threshold:
+            result["faucet_status"] = "sufficient"
+            return result
+
+        try:
+            funding = await asyncio.to_thread(
+                chain_service.grant_test_eth,
+                wallet_address,
+                amount_eth=grant_amount_eth,
+            )
+            if not funding:
+                result["faucet_status"] = "unavailable"
+                result["faucet_error"] = "Faucet transaction was not sent"
+                return result
+
+            result["faucet_tx_hash"] = funding.get("tx_hash")
+            result["wallet_balance_eth"] = funding.get("wallet_balance_eth") or result["wallet_balance_eth"]
+            result["faucet_status"] = "success" if funding.get("status") == 1 else "failed"
             if result["faucet_status"] != "success":
                 result["faucet_error"] = "Faucet transaction reverted"
             return result
@@ -443,6 +518,18 @@ def ensure_admin_user(db: Session) -> None:
         },
     ]
 
+    def _ensure_seed_wallet_credentials(user: models.User) -> None:
+        has_private_material = bool(user.encrypted_private_key and user.private_key_hash and user.encryption_public_key)
+        if has_private_material:
+            return
+
+        account = Account.create()
+        generated_private_key = normalize_private_key(account.key.hex())
+        user.private_key_hash = private_key_hash(generated_private_key)
+        user.encrypted_private_key = AuthService.encrypt_private_key_for_storage(generated_private_key)
+        user.encryption_public_key = private_key_to_public_key(generated_private_key)
+        apply_sensitive_user_fields(user, wallet_address=account.address)
+
     for user_item in seed_users:
         existing_user = db.query(models.User).filter(models.User.username == user_item["username"]).first()
         if existing_user:
@@ -450,6 +537,7 @@ def ensure_admin_user(db: Session) -> None:
             existing_user.role_id = role_map[user_item["role"]].id
             existing_user.is_active = True
             apply_sensitive_user_fields(existing_user, email=user_item["email"])
+            _ensure_seed_wallet_credentials(existing_user)
 
             if not AuthService.verify_password(user_item["password"], existing_user.password_hash):
                 existing_user.password_hash = AuthService.hash_password(user_item["password"])
@@ -464,6 +552,7 @@ def ensure_admin_user(db: Session) -> None:
             is_active=True,
         )
         apply_sensitive_user_fields(db_user, email=user_item["email"])
+        _ensure_seed_wallet_credentials(db_user)
         db.add(db_user)
 
     db.commit()

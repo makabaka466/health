@@ -43,8 +43,30 @@ def _get_bool_system_setting(db: Session, key: str, default_value: bool) -> bool
         return default_value
 
 
-def _build_login_token(user: models.User) -> dict:
-    access_token_expires = timedelta(minutes=settings.ACCESS_TOKEN_EXPIRE_MINUTES)
+def _get_int_system_setting(db: Session, key: str, default_value: int) -> int:
+    row = db.query(models.SystemSetting).filter(models.SystemSetting.setting_key == key).first()
+    if not row:
+        return default_value
+    try:
+        value = int(json.loads(row.setting_value))
+    except Exception:  # noqa: BLE001
+        return default_value
+    return value if value > 0 else default_value
+
+
+def _ensure_not_maintenance_mode(db: Session) -> None:
+    if _get_bool_system_setting(db, "maintenance_mode", False):
+        raise HTTPException(status_code=status.HTTP_503_SERVICE_UNAVAILABLE, detail="System is under maintenance")
+
+
+def _validate_password_length(db: Session, password: str) -> None:
+    min_length = _get_int_system_setting(db, "password_min_length", 6)
+    if len(password or "") < min_length:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=f"Password must be at least {min_length} characters")
+
+
+def _build_login_token(user: models.User, expires_minutes: int) -> dict:
+    access_token_expires = timedelta(minutes=expires_minutes)
     access_token = create_access_token(data={"sub": user.username}, expires_delta=access_token_expires)
     return {
         "access_token": access_token,
@@ -56,8 +78,10 @@ def _build_login_token(user: models.User) -> dict:
 
 @router.post("/register", response_model=UserRegisterResponse)
 async def register(user: UserCreate, db: Session = Depends(get_db)):
+    _ensure_not_maintenance_mode(db)
+    _validate_password_length(db, user.password)
     if not _get_bool_system_setting(db, "allow_user_register", True):
-        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="当前系统已关闭用户注册")
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="User registration is disabled")
 
     auth_service = AuthService(db)
     try:
@@ -73,32 +97,40 @@ async def register(user: UserCreate, db: Session = Depends(get_db)):
 
 @router.post("/login", response_model=Token)
 async def login(form_data: OAuth2PasswordRequestForm = Depends(), db: Session = Depends(get_db)):
+    _ensure_not_maintenance_mode(db)
     auth_service = AuthService(db)
     user = await auth_service.authenticate(form_data.username, form_data.password)
 
     if not user:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="用户名或密码错误",
+            detail="Invalid username or password",
             headers={"WWW-Authenticate": "Bearer"},
         )
 
     if not user.is_active:
-        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="账号已被禁用")
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Account is disabled")
+
+    if user.role != "admin":
+        await auth_service.ensure_wallet_min_balance_on_login(user, min_balance_eth="10", grant_amount_eth="10")
 
     AdminSystemService(db).log(
         level="INFO",
         module="auth",
         action="login",
-        message=f"用户登录成功：{user.username}",
+        message=f"User login success: {user.username}",
         operator_id=user.id,
     )
     db.commit()
-    return _build_login_token(user)
+    session_minutes = _get_int_system_setting(db, "session_timeout_minutes", settings.ACCESS_TOKEN_EXPIRE_MINUTES)
+    return _build_login_token(user, session_minutes)
 
 
 @router.post("/social/login-init", response_model=SocialLoginInitResponse)
 async def social_login_init(payload: SocialLoginInitRequest, db: Session = Depends(get_db)):
+    _ensure_not_maintenance_mode(db)
+    if not _get_bool_system_setting(db, "allow_social_login", True):
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Social login is disabled")
     auth_service = AuthService(db)
     try:
         result = await auth_service.social_login_init(payload)
@@ -116,21 +148,29 @@ async def social_login_init(payload: SocialLoginInitRequest, db: Session = Depen
 
     user = result["user"]
     if not user.is_active:
-        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="账号已被禁用")
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Account is disabled")
+
+    if user.role != "admin":
+        await auth_service.ensure_wallet_min_balance_on_login(user, min_balance_eth="10", grant_amount_eth="10")
 
     AdminSystemService(db).log(
         level="INFO",
         module="auth",
         action="social_login",
-        message=f"用户社交登录成功：{user.username}",
+        message=f"User social login success: {user.username}",
         operator_id=user.id,
     )
     db.commit()
-    return SocialLoginInitResponse(need_profile_completion=False, **_build_login_token(user))
+    session_minutes = _get_int_system_setting(db, "session_timeout_minutes", settings.ACCESS_TOKEN_EXPIRE_MINUTES)
+    return SocialLoginInitResponse(need_profile_completion=False, **_build_login_token(user, session_minutes))
 
 
 @router.post("/social/complete", response_model=Token)
 async def social_profile_complete(payload: SocialProfileCompleteRequest, db: Session = Depends(get_db)):
+    _ensure_not_maintenance_mode(db)
+    if not _get_bool_system_setting(db, "allow_social_login", True):
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Social login is disabled")
+    _validate_password_length(db, payload.password)
     auth_service = AuthService(db)
     try:
         user, _generated_private_key, _faucet_result = await auth_service.complete_social_profile(payload)
@@ -141,11 +181,12 @@ async def social_profile_complete(payload: SocialProfileCompleteRequest, db: Ses
         level="INFO",
         module="auth",
         action="social_complete",
-        message=f"用户完成社交账号资料补全：{user.username}",
+        message=f"User social profile completed: {user.username}",
         operator_id=user.id,
     )
     db.commit()
-    return _build_login_token(user)
+    session_minutes = _get_int_system_setting(db, "session_timeout_minutes", settings.ACCESS_TOKEN_EXPIRE_MINUTES)
+    return _build_login_token(user, session_minutes)
 
 
 @router.post("/admin/login", response_model=Token)
@@ -156,16 +197,17 @@ async def admin_login(form_data: OAuth2PasswordRequestForm = Depends(), db: Sess
     if not user:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="管理员账号或密码错误",
+            detail="Invalid admin username or password",
             headers={"WWW-Authenticate": "Bearer"},
         )
 
     if not user.is_active:
-        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="账号已被禁用")
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Account is disabled")
 
+    session_minutes = _get_int_system_setting(db, "session_timeout_minutes", 60)
     access_token = create_access_token(
         data={"sub": user.username, "role": "admin"},
-        expires_delta=timedelta(minutes=60),
+        expires_delta=timedelta(minutes=session_minutes),
     )
     AdminSystemService(db).log(
         level="INFO",
@@ -294,7 +336,7 @@ async def get_admin_user_detail(
 ):
     user = db.query(models.User).filter(models.User.id == user_id).first()
     if not user:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="用户不存在")
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="User not found")
     return AuthService.serialize_admin_user_response(user)
 
 
@@ -307,17 +349,17 @@ async def update_admin_user_status(
 ):
     user = db.query(models.User).filter(models.User.id == user_id).first()
     if not user:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="用户不存在")
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="User not found")
 
     if user.id == current_admin.id and not is_active:
-        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="不能禁用当前管理员账号")
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Cannot disable current admin")
 
     user.is_active = is_active
     AdminSystemService(db).log(
         level="INFO",
         module="admin_users",
         action="update_status",
-        message=f"管理员修改用户状态：{user.username} -> {'启用' if is_active else '禁用'}",
+        message=f"管理员更新用户状态：{user.username} -> {'启用' if is_active else '禁用'}",
         operator_id=current_admin.id,
     )
     db.commit()
@@ -333,7 +375,7 @@ async def reset_admin_user_password(
 ):
     user = db.query(models.User).filter(models.User.id == user_id).first()
     if not user:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="用户不存在")
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="User not found")
 
     user.password_hash = AuthService.hash_password("123456")
     AdminSystemService(db).log(
@@ -345,3 +387,4 @@ async def reset_admin_user_password(
     )
     db.commit()
     return {"message": f"用户 {user.username} 密码已重置为初始密码", "initial_password": "123456"}
+
