@@ -549,6 +549,7 @@ async def create_health_record(
             f"{'公开' if is_public else '私密'}"
         ),
         operator_id=current_user.id,
+        force=True,
     )
     if onchain_warning:
         AdminSystemService(db).log(
@@ -584,6 +585,15 @@ async def get_health_records(
         query = query.filter(models.HealthData.created_at <= end_date)
     
     records = query.order_by(models.HealthData.created_at.desc()).offset(skip).limit(limit).all()
+    AdminSystemService(db).log(
+        level="INFO",
+        module="health_records",
+        action="view_list",
+        message=f"User viewed health record list, count={len(records)}",
+        operator_id=current_user.id,
+        force=True,
+    )
+    db.commit()
     effective_private_key, _ = _resolve_effective_private_key(current_user, private_key)
     return [_serialize_record(item, effective_private_key, current_user) for item in records]
 
@@ -604,6 +614,15 @@ async def get_health_record(
     if not record:
         raise HTTPException(status_code=404, detail="健康数据记录不存在")
     
+    AdminSystemService(db).log(
+        level="INFO",
+        module="health_records",
+        action="view_detail",
+        message=f"User viewed health record detail, record_id={record.id}",
+        operator_id=current_user.id,
+        force=True,
+    )
+    db.commit()
     effective_private_key, _ = _resolve_effective_private_key(current_user, private_key)
     return _serialize_record(record, effective_private_key, current_user)
 

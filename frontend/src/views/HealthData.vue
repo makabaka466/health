@@ -58,6 +58,7 @@
               </div>
               <div v-else>
                 <el-table :data="healthRecords" style="width: 100%" max-height="320">
+                  <el-table-column prop="data_title" label="记录标题" min-width="180" show-overflow-tooltip />
                   <el-table-column prop="recorded_at" label="记录时间" width="180">
                     <template #default="scope">
                       {{ formatDate(scope.row.recorded_at) }}
@@ -102,7 +103,7 @@
                   </el-table-column>
                   <el-table-column label="附件" width="140">
                     <template #default="scope">
-                      <span v-if="scope.row.requires_private_key">{{ hiddenText }}</span>
+                      <span v-if="scope.row.is_private">{{ hiddenText }}</span>
                       <el-button v-else-if="scope.row.health_data_file" type="primary" text @click="openAttachment(scope.row)">
                         {{ scope.row.record_type === 'word' ? downloadWordText : viewPdfText }}
                       </el-button>
@@ -153,7 +154,7 @@
                   </el-table-column>
                   <el-table-column :label="actionsColumnText" width="220" fixed="right">
                     <template #default="scope">
-                      <el-button v-if="scope.row.requires_private_key" type="primary" text @click="viewPrivateRecord(scope.row)">
+                      <el-button v-if="scope.row.is_private" type="primary" text @click="viewPrivateRecord(scope.row)">
                         {{ scope.row.record_type === 'manual' ? revealDataText : revealAttachmentText }}
                       </el-button>
                       <el-button type="text" @click="openGrantDialog(scope.row)">
@@ -203,6 +204,14 @@
       width="600px"
     >
       <el-form :model="healthForm" :rules="healthRules" ref="healthFormRef" label-width="120px">
+        <el-form-item label="记录标题" prop="data_title">
+          <el-input
+            v-model="healthForm.data_title"
+            maxlength="80"
+            show-word-limit
+            placeholder="例如：2026-05-04 体检报告 / 晨起血压记录"
+          />
+        </el-form-item>
         <template v-if="formMode === 'manual'">
         <el-row :gutter="16">
           <el-col :span="12">
@@ -521,6 +530,7 @@ const grantForm = ref({
 })
 
 const healthForm = ref({
+  data_title: '',
   weight: null,
   height: null,
   blood_pressure: '',
@@ -604,6 +614,7 @@ const defaultUploadedFileName = computed(() => (
 ))
 
 const healthRules = {
+  data_title: [{ max: 80, message: '记录标题最多 80 个字符', trigger: 'blur' }],
   weight: [{ type: 'number', message: '请输入有效的体重', trigger: 'blur' }],
   height: [{ type: 'number', message: '请输入有效的身高', trigger: 'blur' }],
   blood_pressure: [{
@@ -674,6 +685,7 @@ const toViewRecord = (record) => {
   )
   return {
     ...record,
+    data_title: record.data_title || '',
     record_type: fileType,
     is_private: !record.is_public,
     requires_private_key: !!record.requires_private_key,
@@ -700,7 +712,7 @@ const toViewRecord = (record) => {
 }
 
 const displayMetric = (record, value) => {
-  if (record.requires_private_key) return hiddenText
+  if (record.is_private) return hiddenText
   if (value === null || value === undefined || value === '') return '-'
   return value
 }
@@ -851,6 +863,7 @@ const openManualDialog = () => {
   formMode.value = 'manual'
   isEditing.value = false
   healthForm.value = {
+    data_title: '',
     weight: null,
     height: null,
     blood_pressure: '',
@@ -871,6 +884,7 @@ const openFileDialog = () => {
   formMode.value = 'file'
   isEditing.value = false
   healthForm.value = {
+    data_title: '',
     weight: null,
     height: null,
     blood_pressure: '',
@@ -937,6 +951,7 @@ const editRecord = async (record) => {
   isEditing.value = true
   healthForm.value = {
     ...record,
+    data_title: record.data_title || '',
     weight: metrics.weight ?? null,
     height: metrics.height ?? null,
     blood_pressure: bloodPressure,
@@ -1027,9 +1042,11 @@ const saveHealthData = async () => {
     metrics.blood_pressure_systolic = parsedPressure.systolic
 
     const payload = {
-      data_title: formMode.value === 'manual'
-        ? '手动健康记录'
-        : (healthForm.value.health_data_file_name || (healthForm.value.record_type === 'word' ? '健康数据Word' : '健康数据PDF')),
+      data_title: (healthForm.value.data_title || '').trim() || (
+        formMode.value === 'manual'
+          ? '手动健康记录'
+          : (healthForm.value.health_data_file_name || (healthForm.value.record_type === 'word' ? '健康数据Word' : '健康数据PDF'))
+      ),
       file_type: formMode.value === 'manual' ? 'text' : healthForm.value.record_type,
       is_public: !healthForm.value.is_private,
       recorded_at: healthForm.value.recorded_at ? new Date(healthForm.value.recorded_at).toISOString() : null,

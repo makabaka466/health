@@ -86,6 +86,14 @@ async def register(user: UserCreate, db: Session = Depends(get_db)):
     auth_service = AuthService(db)
     try:
         db_user, generated_private_key, faucet_result = await auth_service.register(user)
+        AdminSystemService(db).log(
+            level="INFO",
+            module="auth",
+            action="register",
+            message=f"User register success: {db_user.username}",
+            operator_id=db_user.id,
+        )
+        db.commit()
         return {
             **AuthService.serialize_user_response(db_user),
             "generated_private_key": generated_private_key,
@@ -120,6 +128,7 @@ async def login(form_data: OAuth2PasswordRequestForm = Depends(), db: Session = 
         action="login",
         message=f"User login success: {user.username}",
         operator_id=user.id,
+        force=True,
     )
     db.commit()
     session_minutes = _get_int_system_setting(db, "session_timeout_minutes", settings.ACCESS_TOKEN_EXPIRE_MINUTES)
@@ -159,6 +168,7 @@ async def social_login_init(payload: SocialLoginInitRequest, db: Session = Depen
         action="social_login",
         message=f"User social login success: {user.username}",
         operator_id=user.id,
+        force=True,
     )
     db.commit()
     session_minutes = _get_int_system_setting(db, "session_timeout_minutes", settings.ACCESS_TOKEN_EXPIRE_MINUTES)
@@ -183,6 +193,7 @@ async def social_profile_complete(payload: SocialProfileCompleteRequest, db: Ses
         action="social_complete",
         message=f"User social profile completed: {user.username}",
         operator_id=user.id,
+        force=True,
     )
     db.commit()
     session_minutes = _get_int_system_setting(db, "session_timeout_minutes", settings.ACCESS_TOKEN_EXPIRE_MINUTES)
@@ -215,6 +226,7 @@ async def admin_login(form_data: OAuth2PasswordRequestForm = Depends(), db: Sess
         action="admin_login",
         message=f"管理员登录成功：{user.username}",
         operator_id=user.id,
+        force=True,
     )
     db.commit()
     return {

@@ -71,6 +71,7 @@ class AdminSystemService:
         page_size: int = 20,
         keyword: str | None = None,
         file_type: str | None = None,
+        visibility: str | None = None,
     ) -> AdminHealthRecordListResponse:
         query = self.db.query(models.HealthData, models.User.username).join(
             models.User, models.User.id == models.HealthData.user_id
@@ -84,6 +85,12 @@ class AdminSystemService:
         normalized_type = (file_type or "").strip().lower()
         if normalized_type in {"text", "pdf", "word"}:
             query = query.filter(models.HealthData.file_type == normalized_type)
+
+        normalized_visibility = (visibility or "").strip().lower()
+        if normalized_visibility == "public":
+            query = query.filter(models.HealthData.is_public.is_(True))
+        elif normalized_visibility == "private":
+            query = query.filter(models.HealthData.is_public.is_(False))
 
         total = query.count()
         rows = (
@@ -115,8 +122,17 @@ class AdminSystemService:
             page_size=page_size,
         )
 
-    def log(self, *, level: str, module: str, action: str, message: str, operator_id: int | None = None) -> None:
-        if not self._is_operation_log_enabled() and module != "system_settings":
+    def log(
+        self,
+        *,
+        level: str,
+        module: str,
+        action: str,
+        message: str,
+        operator_id: int | None = None,
+        force: bool = False,
+    ) -> None:
+        if not force and not self._is_operation_log_enabled() and module != "system_settings":
             return
 
         self.db.add(

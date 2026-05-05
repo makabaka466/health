@@ -1,4 +1,7 @@
+from datetime import datetime
+
 from fastapi import APIRouter, Depends, HTTPException, Query
+from sqlalchemy import or_
 from sqlalchemy.orm import Session
 
 from app import models
@@ -77,6 +80,7 @@ async def list_admin_health_records(
     page_size: int = Query(20, ge=1, le=100),
     keyword: str | None = Query(None),
     file_type: str | None = Query(None),
+    visibility: str | None = Query(None),
     db: Session = Depends(get_db),
     current_admin=Depends(get_current_admin),
 ):
@@ -94,6 +98,7 @@ async def list_admin_health_records(
         page_size=page_size,
         keyword=keyword,
         file_type=file_type,
+        visibility=visibility,
     )
 
 
@@ -106,18 +111,61 @@ async def get_admin_health_record_detail(
 ):
     record = db.query(models.HealthData).filter(models.HealthData.id == record_id).first()
     if not record:
-        raise HTTPException(status_code=404, detail="健康数据记录不存在")
+        raise HTTPException(status_code=404, detail="?????????")
 
     owner = db.query(models.User).filter(models.User.id == record.user_id).first()
     if not owner:
-        raise HTTPException(status_code=404, detail="记录所属用户不存在")
+        raise HTTPException(status_code=404, detail="?????????")
 
-    normalized_private_key = None
-    if private_key:
-        wallet_address = AuthService.get_user_wallet_address(owner)
-        if not verify_user_private_key(private_key, wallet_address, owner.private_key_hash):
-            raise HTTPException(status_code=403, detail="私钥校验失败，无法查看该隐私数据")
-        normalized_private_key = normalize_private_key(private_key)
+    now = datetime.utcnow()
+    active_grant = (
+        db.query(models.HealthDataGrant)
+        .filter(
+            models.HealthDataGrant.record_id == record.id,
+            models.HealthDataGrant.grantee_user_id == current_admin.id,
+            models.HealthDataGrant.can_read.is_(True),
+            models.HealthDataGrant.revoked_at.is_(None),
+            or_(models.HealthDataGrant.expires_at.is_(None), models.HealthDataGrant.expires_at > now),
+        )
+        .order_by(models.HealthDataGrant.created_at.desc())
+        .first()
+    )
+
+    payload = None
+    authorized_via_grant = False
+    # ??????????????????? grant.wrapped_dek
+    if active_grant and not record.is_public:
+        admin_private_key = None
+        if private_key:
+            admin_wallet = AuthService.get_user_wallet_address(current_admin)
+            if verify_user_private_key(private_key, admin_wallet, current_admin.private_key_hash):
+                admin_private_key = normalize_private_key(private_key)
+
+        if not admin_private_key and current_admin.encrypted_private_key:
+            try:
+                admin_private_key = normalize_private_key(
+                    AuthService.decrypt_private_key_from_storage(current_admin.encrypted_private_key)
+                )
+            except ValueError:
+                admin_private_key = None
+
+        if admin_private_key:
+            payload = _serialize_record(
+                record,
+                admin_private_key,
+                current_user=current_admin,
+                wrapped_dek=active_grant.wrapped_dek,
+            )
+            authorized_via_grant = True
+
+    # ????????????????????????????
+    if payload is None:
+        normalized_owner_private_key = None
+        if private_key:
+            owner_wallet_address = AuthService.get_user_wallet_address(owner)
+            if verify_user_private_key(private_key, owner_wallet_address, owner.private_key_hash):
+                normalized_owner_private_key = normalize_private_key(private_key)
+        payload = _serialize_record(record, normalized_owner_private_key, owner)
 
     service = AdminSystemService(db)
     service.log(
@@ -125,13 +173,14 @@ async def get_admin_health_record_detail(
         module="health_records",
         action="view_detail",
         message=(
-            f"管理员查看健康数据详情，记录ID：{record.id}，公开状态："
-            f"{'公开' if record.is_public else '私密'}"
+            f"??????????????ID?{record.id}??????"
+            f"{'??' if record.is_public else '??'}"
         ),
         operator_id=current_admin.id,
+        force=True,
     )
     db.commit()
 
-    payload = _serialize_record(record, normalized_private_key, owner)
     payload["username"] = owner.username
+    payload["authorized_via_grant"] = authorized_via_grant
     return payload

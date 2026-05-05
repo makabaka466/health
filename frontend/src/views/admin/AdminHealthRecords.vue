@@ -20,6 +20,10 @@
               <el-option label="PDF" value="pdf" />
               <el-option label="Word" value="word" />
             </el-select>
+            <el-select v-model="query.visibility" :placeholder="'\u516c\u5f00\u72b6\u6001'" clearable style="width: 140px">
+              <el-option :label="'\u516c\u5f00'" value="public" />
+              <el-option :label="'\u79c1\u5bc6'" value="private" />
+            </el-select>
             <el-button type="primary" @click="handleSearch">查询</el-button>
           </div>
         </div>
@@ -168,7 +172,8 @@ const query = reactive({
   page: 1,
   page_size: 20,
   keyword: '',
-  file_type: ''
+  file_type: '',
+  visibility: ''
 })
 
 const parseDataContent = (content) => {
@@ -247,19 +252,26 @@ const handleSearch = () => {
   loadRecords()
 }
 
-const fetchDetail = async (recordId, privateKey = '') => {
+const fetchDetail = async (recordId, privateKey = '', { suppressLockedPrompt = false } = {}) => {
   detailLoading.value = true
   try {
     const params = privateKey ? { private_key: privateKey } : {}
     const detail = await getAdminHealthRecordDetail(recordId, params)
     if (!detail.is_public && detail.requires_private_key) {
-      ElMessage.error('私钥不正确，或无法解锁该隐私数据')
-      return
+      if (!suppressLockedPrompt) {
+        ElMessage.error('私钥不正确，或无法解锁该隐私数据')
+      }
+      return { ok: false, needsPrivateKey: true }
     }
     activeDetail.value = detail
     detailDialogVisible.value = true
+    if (detail.authorized_via_grant) {
+      ElMessage.success('\u5df2\u6388\u6743\uff1a\u5f53\u524d\u8bb0\u5f55\u901a\u8fc7\u7ba1\u7406\u5458\u6388\u6743\u89e3\u5bc6\u67e5\u770b')
+    }
+    return { ok: true, needsPrivateKey: false }
   } catch (error) {
     ElMessage.error(error.response?.data?.detail || '查看记录详情失败')
+    return { ok: false, needsPrivateKey: false }
   } finally {
     detailLoading.value = false
   }
@@ -272,6 +284,11 @@ const handleView = async (row) => {
     await fetchDetail(row.id)
     return
   }
+  const result = await fetchDetail(row.id, '', { suppressLockedPrompt: true })
+  if (result?.ok) {
+    return
+  }
+  ElMessage.warning('当前管理员未获得该私密记录授权，请输入该用户私钥后查看')
   privateKeyDialogVisible.value = true
 }
 

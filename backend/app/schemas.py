@@ -327,6 +327,7 @@ class HealthDataResponse(HealthDataBase):
 
 class AdminHealthRecordDetailResponse(HealthDataResponse):
     username: str
+    authorized_via_grant: bool = False
 
 class HealthAnalysisRequest(BaseModel):
     start_date: Optional[date] = None

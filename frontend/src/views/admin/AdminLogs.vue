@@ -5,9 +5,15 @@
         <div class="header-row">
           <span>系统日志</span>
           <div class="header-actions">
-            <el-select v-model="query.module" placeholder="按模块筛选" clearable style="width: 180px">
-              <el-option label="系统设置" value="system_settings" />
-              <el-option label="系统日志" value="system_logs" />
+            <el-select v-model="query.module" placeholder="Filter by module" clearable style="width: 180px">
+              <el-option label="auth" value="auth" />
+              <el-option label="health_records" value="health_records" />
+              <el-option label="user_profile" value="user_profile" />
+              <el-option label="admin_users" value="admin_users" />
+              <el-option label="system_settings" value="system_settings" />
+              <el-option label="system_logs" value="system_logs" />
+              <el-option label="knowledge_articles" value="knowledge_articles" />
+              <el-option label="knowledge_base" value="knowledge_base" />
             </el-select>
             <el-button type="primary" @click="loadLogs">刷新</el-button>
           </div>
