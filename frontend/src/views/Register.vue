@@ -461,7 +461,7 @@ onMounted(() => {
   background: linear-gradient(135deg, #eef7ff 0%, #dceeff 100%);
 }
 
-/* ???? */
+/* Background decoration */
 .bg-decoration {
   position: absolute;
   top: 0;
@@ -757,7 +757,7 @@ onMounted(() => {
   font-size: 14px;
 }
 
-/* Element Plus ???? */
+/* Element Plus overrides */
 :deep(.el-input__wrapper) {
   border-radius: 12px;
   padding: 18px 24px;
@@ -843,7 +843,7 @@ onMounted(() => {
   border-top: 1px solid #f0f0f0;
 }
 
-/* ????? */
+/* Mobile layout */
 @media (max-width: 480px) {
   .register-box {
     padding: 40px 30px;
@@ -864,7 +864,7 @@ onMounted(() => {
   }
 }
 
-/* ?????? */
+/* Dark mode */
 @media (prefers-color-scheme: dark) {
   .register-box {
     background: rgba(30, 30, 30, 0.95);

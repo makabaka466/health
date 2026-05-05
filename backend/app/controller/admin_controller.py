@@ -111,11 +111,11 @@ async def get_admin_health_record_detail(
 ):
     record = db.query(models.HealthData).filter(models.HealthData.id == record_id).first()
     if not record:
-        raise HTTPException(status_code=404, detail="?????????")
+        raise HTTPException(status_code=404, detail="健康数据记录不存在")
 
     owner = db.query(models.User).filter(models.User.id == record.user_id).first()
     if not owner:
-        raise HTTPException(status_code=404, detail="?????????")
+        raise HTTPException(status_code=404, detail="记录所属用户不存在")
 
     now = datetime.utcnow()
     active_grant = (
@@ -133,7 +133,7 @@ async def get_admin_health_record_detail(
 
     payload = None
     authorized_via_grant = False
-    # ??????????????????? grant.wrapped_dek
+    # 优先使用管理员授权记录中的 wrapped_dek 解密私密数据。
     if active_grant and not record.is_public:
         admin_private_key = None
         if private_key:
@@ -158,7 +158,7 @@ async def get_admin_health_record_detail(
             )
             authorized_via_grant = True
 
-    # ????????????????????????????
+    # 未通过授权解密时，回退到所有者私钥序列化记录。
     if payload is None:
         normalized_owner_private_key = None
         if private_key:
@@ -173,8 +173,8 @@ async def get_admin_health_record_detail(
         module="health_records",
         action="view_detail",
         message=(
-            f"??????????????ID?{record.id}??????"
-            f"{'??' if record.is_public else '??'}"
+            f"管理员查看健康数据记录详情，ID：{record.id}，可见性："
+            f"{'公开' if record.is_public else '私密'}"
         ),
         operator_id=current_admin.id,
         force=True,
