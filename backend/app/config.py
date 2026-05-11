@@ -85,6 +85,7 @@ class Settings:
 
     # 链上配置（Ganache / EVM）
     WEB3_PROVIDER_URI: str = os.getenv("WEB3_PROVIDER_URI", "http://127.0.0.1:7545")
+    WEB3_RPC_TIMEOUT_SECONDS: int = int(os.getenv("WEB3_RPC_TIMEOUT_SECONDS", "3"))
     HEALTH_DATA_CONTRACT_ADDRESS: Optional[str] = os.getenv(
         "HEALTH_DATA_CONTRACT_ADDRESS",
         _default_health_data_contract_address(),

@@ -10,22 +10,30 @@ from app.config import settings
 
 class HealthDataChainService:
     def __init__(self) -> None:
-        self.web3 = Web3(Web3.HTTPProvider(settings.WEB3_PROVIDER_URI))
-        self._enabled = bool(settings.HEALTH_DATA_CONTRACT_ADDRESS and settings.HEALTH_DATA_CONTRACT_ABI_JSON)
+        self.web3 = Web3(
+            Web3.HTTPProvider(
+                settings.WEB3_PROVIDER_URI,
+                request_kwargs={"timeout": settings.WEB3_RPC_TIMEOUT_SECONDS},
+            )
+        )
+        self._configured = bool(settings.HEALTH_DATA_CONTRACT_ADDRESS and settings.HEALTH_DATA_CONTRACT_ABI_JSON)
         self._contract = None
+        self._contract_abi = None
+        self._contract_address = None
 
-        if self._enabled:
-            abi = json.loads(settings.HEALTH_DATA_CONTRACT_ABI_JSON)
-            checksum_address = Web3.to_checksum_address(settings.HEALTH_DATA_CONTRACT_ADDRESS)
-            deployed_code = self.web3.eth.get_code(checksum_address)
-            if deployed_code and deployed_code != b"\x00":
-                self._contract = self.web3.eth.contract(address=checksum_address, abi=abi)
-            else:
-                self._enabled = False
+        if self._configured:
+            try:
+                self._contract_abi = json.loads(settings.HEALTH_DATA_CONTRACT_ABI_JSON)
+                self._contract_address = Web3.to_checksum_address(settings.HEALTH_DATA_CONTRACT_ADDRESS)
+            except Exception:
+                self._configured = False
+
+        self._ensure_contract_bound()
 
     @property
     def enabled(self) -> bool:
-        return self._enabled and self._contract is not None
+        self._ensure_contract_bound()
+        return self._configured and self._contract is not None and self.rpc_connected
 
     @property
     def rpc_connected(self) -> bool:
@@ -33,6 +41,21 @@ class HealthDataChainService:
             return self.web3.is_connected()
         except Exception:
             return False
+
+    def _ensure_contract_bound(self) -> None:
+        if not self._configured:
+            return
+        if not self.rpc_connected:
+            self._contract = None
+            return
+        if self._contract is not None:
+            return
+        try:
+            deployed_code = self.web3.eth.get_code(self._contract_address)
+            if deployed_code and deployed_code != b"\x00":
+                self._contract = self.web3.eth.contract(address=self._contract_address, abi=self._contract_abi)
+        except Exception:
+            self._contract = None
 
     def _gas_price_wei(self) -> int:
         return self.web3.to_wei(settings.WEB3_GAS_PRICE_GWEI, "gwei")

@@ -1223,31 +1223,84 @@ const formatDate = (dateString) => {
   return new Date(dateString).toLocaleString('zh-CN')
 }
 
-const openUnlockedAttachment = (record) => {
+const dataUrlToBlobUrl = (dataUrl) => {
+  if (!dataUrl || typeof dataUrl !== 'string') return null
+  const match = dataUrl.match(/^data:([^;]+);base64,(.+)$/)
+  if (!match) return null
+  const mimeType = match[1] || 'application/octet-stream'
+  const base64 = match[2]
+  const binary = window.atob(base64)
+  const bytes = new Uint8Array(binary.length)
+  for (let i = 0; i < binary.length; i += 1) {
+    bytes[i] = binary.charCodeAt(i)
+  }
+  const blob = new Blob([bytes], { type: mimeType })
+  return {
+    blobUrl: URL.createObjectURL(blob),
+    mimeType
+  }
+}
+
+const openUnlockedAttachment = (record, popupWindow = null) => {
   if (!record?.health_data_file) return
+  const blobInfo = dataUrlToBlobUrl(record.health_data_file)
+  const attachmentUrl = blobInfo?.blobUrl || record.health_data_file
 
   if (record.record_type === 'word') {
     const link = document.createElement('a')
-    link.href = record.health_data_file
+    link.href = attachmentUrl
     link.download = record.health_data_file_name || '健康数据.docx'
     link.target = '_blank'
     link.rel = 'noopener noreferrer'
     link.click()
+    if (blobInfo?.blobUrl) {
+      setTimeout(() => URL.revokeObjectURL(blobInfo.blobUrl), 60_000)
+    }
+    if (popupWindow && !popupWindow.closed) {
+      popupWindow.close()
+    }
     return
   }
 
-  window.open(record.health_data_file, '_blank', 'noopener,noreferrer')
+  if (popupWindow && !popupWindow.closed) {
+    popupWindow.location.replace(attachmentUrl)
+    if (blobInfo?.blobUrl) {
+      setTimeout(() => URL.revokeObjectURL(blobInfo.blobUrl), 60_000)
+    }
+    return
+  }
+
+  const link = document.createElement('a')
+  link.href = attachmentUrl
+  link.target = '_blank'
+  link.rel = 'noopener noreferrer'
+  link.click()
+  if (blobInfo?.blobUrl) {
+    setTimeout(() => URL.revokeObjectURL(blobInfo.blobUrl), 60_000)
+  }
 }
 
 const openAttachment = async (record) => {
+  let previewWindow = null
   if (record.requires_private_key) {
+    // Open the tab on direct click first, then fill it after async unlock to avoid popup blocking.
+    previewWindow = window.open('', '_blank')
+    if (!previewWindow) {
+      ElMessage.error('浏览器拦截了新窗口，请允许弹窗后重试')
+      return
+    }
     ElMessage.warning(lockedRecordText)
     const unlockedRecord = await fetchUnlockedRecord(record)
-    if (!unlockedRecord) return
+    if (!unlockedRecord) {
+      if (previewWindow && !previewWindow.closed) {
+        previewWindow.close()
+      }
+      return
+    }
     record = unlockedRecord
   }
 
-  openUnlockedAttachment(record)
+  openUnlockedAttachment(record, previewWindow)
 }
 
 onMounted(async () => {

@@ -308,10 +308,10 @@ def _verify_record_onchain(
     data_content: Optional[str],
     file_bytes: Optional[bytes],
 ) -> tuple[Optional[str], Optional[bool], Optional[str]]:
+    if not chain_service.enabled:
+        return "service_unavailable", None, "区块链服务未启用，当前记录未执行链上验真"
     if not record.onchain_data_id:
         return "no_proof", None, "未生成链上存证"
-    if not chain_service.enabled:
-        return "service_unavailable", None, "区块链服务未启用，暂时无法校验"
 
     source_payload = _build_source_payload(
         record.file_type,
@@ -520,7 +520,7 @@ async def create_health_record(
         onchain_warning = "链上存证未执行：当前账号缺少可用私钥"
     elif chain_private_key and not chain_service.enabled and source_payload and data_hash_hex:
         onchain_warning = "链上存证未执行：区块链服务未启用或合约不可用"
-    if chain_private_key and source_payload and data_hash_hex:
+    if chain_private_key and chain_service.enabled and source_payload and data_hash_hex:
         try:
             chain_result = await asyncio.to_thread(
                 chain_service.store_health_data,
@@ -537,7 +537,7 @@ async def create_health_record(
             else:
                 onchain_warning = "链上存证未执行：区块链服务返回空结果"
         except Exception as exc:  # noqa: BLE001
-            raise HTTPException(status_code=400, detail=f"上链失败：{exc}") from exc
+            onchain_warning = f"链上存证未执行：{exc}"
 
     db.add(db_record)
     AdminSystemService(db).log(
@@ -744,7 +744,7 @@ async def update_health_record(
     elif chain_private_key and not chain_service.enabled and source_payload and data_hash_hex:
         onchain_warning = "链上存证未执行：区块链服务未启用或合约不可用"
 
-    if chain_private_key and source_payload and data_hash_hex:
+    if chain_private_key and chain_service.enabled and source_payload and data_hash_hex:
         try:
             if record.onchain_data_id:
                 chain_result = await asyncio.to_thread(
@@ -770,7 +770,7 @@ async def update_health_record(
             else:
                 onchain_warning = "链上存证未执行：区块链服务返回空结果"
         except Exception as exc:  # noqa: BLE001
-            raise HTTPException(status_code=400, detail=f"上链失败：{exc}") from exc
+            onchain_warning = f"链上存证未执行：{exc}"
 
     AdminSystemService(db).log(
         level="INFO",

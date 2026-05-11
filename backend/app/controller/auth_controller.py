@@ -11,6 +11,7 @@ from app.config import settings
 from app.database import get_db
 from app.service.admin_service import AdminSystemService
 from app.features.auth.dependencies import create_access_token, get_current_admin, get_current_user
+from app.features.blockchain.service import chain_service
 from app.service.auth_profile_service import UserProfileService
 from app.service.auth_service import AuthService
 from app.schemas import (
@@ -65,6 +66,14 @@ def _validate_password_length(db: Session, password: str) -> None:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=f"Password must be at least {min_length} characters")
 
 
+def _ensure_blockchain_ready_for_registration() -> None:
+    if not chain_service.rpc_connected:
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="区块链服务未启动，暂不支持注册，请先启动 Ganache 后重试",
+        )
+
+
 def _build_login_token(user: models.User, expires_minutes: int) -> dict:
     access_token_expires = timedelta(minutes=expires_minutes)
     access_token = create_access_token(data={"sub": user.username}, expires_delta=access_token_expires)
@@ -79,6 +88,7 @@ def _build_login_token(user: models.User, expires_minutes: int) -> dict:
 @router.post("/register", response_model=UserRegisterResponse)
 async def register(user: UserCreate, db: Session = Depends(get_db)):
     _ensure_not_maintenance_mode(db)
+    _ensure_blockchain_ready_for_registration()
     _validate_password_length(db, user.password)
     if not _get_bool_system_setting(db, "allow_user_register", True):
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="User registration is disabled")
@@ -178,6 +188,7 @@ async def social_login_init(payload: SocialLoginInitRequest, db: Session = Depen
 @router.post("/social/complete", response_model=Token)
 async def social_profile_complete(payload: SocialProfileCompleteRequest, db: Session = Depends(get_db)):
     _ensure_not_maintenance_mode(db)
+    _ensure_blockchain_ready_for_registration()
     if not _get_bool_system_setting(db, "allow_social_login", True):
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Social login is disabled")
     _validate_password_length(db, payload.password)
