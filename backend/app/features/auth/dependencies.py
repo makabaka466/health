@@ -14,6 +14,7 @@ from app.features.auth.service import AuthService
 oauth2_scheme = OAuth2PasswordBearer(tokenUrl="api/auth/login")
 
 
+# 功能说明：生成 JWT 访问令牌。
 def create_access_token(data: dict, expires_delta: timedelta | None = None) -> str:
     """创建 JWT 访问令牌，可传入过期时间覆盖默认值。"""
     to_encode = data.copy()
@@ -26,6 +27,7 @@ def create_access_token(data: dict, expires_delta: timedelta | None = None) -> s
     return jwt.encode(to_encode, settings.SECRET_KEY, algorithm=settings.ALGORITHM)
 
 
+# 功能说明：从 Token 解析当前登录用户。
 async def get_current_user(
     token: str = Depends(oauth2_scheme),
     db: Session = Depends(get_db),

@@ -371,6 +371,7 @@ def _record_read_history(db: Session, user_id: int, article_id: int) -> None:
         )
 
 
+# 功能说明：查询健康文章列表。
 @router.get("/articles", response_model=schemas.HealthArticleListResponse)
 async def list_articles(
     page: int = Query(1, ge=1),
@@ -425,6 +426,7 @@ async def list_articles(
     )
 
 
+# 功能说明：查询文章详情并记录阅读历史。
 @router.get("/articles/{article_id}", response_model=schemas.HealthArticleResponse)
 async def get_article_detail(
     article_id: int,
@@ -659,6 +661,7 @@ async def create_article(
     return _to_article_response(article, 0, 0, False)
 
 
+# 功能说明：批量导入健康文章。
 @router.post("/admin/articles/import", response_model=schemas.HealthArticleImportResponse)
 async def import_articles(
     files: List[UploadFile] = File(...),
@@ -856,6 +859,7 @@ async def list_rag_docs(
     )
 
 
+# 功能说明：创建 RAG 知识文档并同步索引。
 @router.post("/admin/rag-docs", response_model=schemas.RagKnowledgeDocResponse)
 async def create_rag_doc(
     payload: schemas.RagKnowledgeDocCreate,
@@ -995,6 +999,7 @@ async def get_rag_chunk_vector(
     )
 
 
+# 功能说明：批量导入 RAG 知识文档。
 @router.post("/admin/rag-docs/import", response_model=schemas.RagKnowledgeImportResponse)
 async def import_rag_docs(
     files: List[UploadFile] = File(...),

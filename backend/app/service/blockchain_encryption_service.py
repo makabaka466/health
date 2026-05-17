@@ -80,6 +80,7 @@ def decrypt_binary(cipher_bytes: bytes, private_key: str) -> bytes:
         raise ValueError("私钥错误或文件已损坏，无法解密") from exc
 
 
+# 功能说明：生成单条记录使用的随机 DEK。
 def generate_data_encryption_key() -> bytes:
     return os.urandom(32)
 
@@ -90,11 +91,13 @@ def _build_fernet_from_dek(dek: bytes) -> Fernet:
     return Fernet(base64.urlsafe_b64encode(bytes(dek)))
 
 
+# 功能说明：使用 DEK 加密文本健康数据。
 def encrypt_text_with_dek(content: str, dek: bytes) -> str:
     fernet = _build_fernet_from_dek(dek)
     return fernet.encrypt((content or "").encode("utf-8")).decode("utf-8")
 
 
+# 功能说明：使用 DEK 解密文本健康数据。
 def decrypt_text_with_dek(cipher_text: str, dek: bytes) -> str:
     fernet = _build_fernet_from_dek(dek)
     try:
@@ -103,11 +106,13 @@ def decrypt_text_with_dek(cipher_text: str, dek: bytes) -> str:
         raise ValueError("DEK 错误或数据已损坏，无法解密文本") from exc
 
 
+# 功能说明：使用 DEK 加密文件类健康数据。
 def encrypt_binary_with_dek(raw: bytes, dek: bytes) -> bytes:
     fernet = _build_fernet_from_dek(dek)
     return fernet.encrypt(raw or b"")
 
 
+# 功能说明：使用 DEK 解密文件类健康数据。
 def decrypt_binary_with_dek(cipher_bytes: bytes, dek: bytes) -> bytes:
     fernet = _build_fernet_from_dek(dek)
     try:
@@ -139,6 +144,7 @@ def _derive_wrap_key(shared_secret: bytes) -> bytes:
     ).derive(shared_secret)
 
 
+# 功能说明：用接收方公钥封装 DEK。
 def wrap_dek_for_public_key(dek: bytes, public_key_hex: str) -> str:
     """用目标用户公钥包装 DEK。"""
     if len(dek) != 32:
@@ -170,6 +176,7 @@ def wrap_dek_for_public_key(dek: bytes, public_key_hex: str) -> str:
     return json.dumps(payload, ensure_ascii=False, separators=(",", ":"))
 
 
+# 功能说明：用用户私钥解开 DEK 密钥包。
 def unwrap_dek_with_private_key(wrapped_payload: str, private_key: str) -> bytes:
     """用接收方私钥解包 DEK，返回原始 32 字节 DEK。"""
     if not wrapped_payload:
@@ -195,6 +202,7 @@ def unwrap_dek_with_private_key(wrapped_payload: str, private_key: str) -> bytes
         raise ValueError("私钥错误或 DEK 包装已损坏") from exc
 
 
+# 功能说明：授权时将 DEK 重新封装给被授权用户。
 def rewrap_dek_for_recipient(
     owner_wrapped_dek: str,
     owner_private_key: str,

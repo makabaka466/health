@@ -79,6 +79,7 @@ def _default_mime_type(file_type: str) -> Optional[str]:
     return None
 
 
+# 功能说明：解析上传文件并校验类型和大小。
 def _decode_upload_data(file_type: str, file_data_base64: Optional[str]) -> tuple[Optional[bytes], Optional[int], Optional[str]]:
     if file_type == "text":
         return None, None, None
@@ -171,6 +172,7 @@ def _public_storage_key() -> str:
     return f"health-data-public::{settings.SECRET_KEY or 'health-data-default'}"
 
 
+# 功能说明：组装用于链上存证和验真的原始载荷。
 def _build_source_payload(
     file_type: str,
     *,
@@ -187,6 +189,7 @@ def _build_source_payload(
     return data_content or ""
 
 
+# 功能说明：计算健康数据载荷的 SHA-256 哈希。
 def _hash_payload(payload: str) -> Optional[str]:
     if not payload:
         return None
@@ -222,6 +225,7 @@ def _ensure_user_encryption_public_key(user: models.User, private_key: Optional[
     return user.encryption_public_key
 
 
+# 功能说明：为私密记录生成 DEK 并用拥有者公钥封装。
 def _build_owner_wrapped_dek(user: models.User, private_key: Optional[str]) -> tuple[bytes, str]:
     user_public_key = _ensure_user_encryption_public_key(user, private_key)
     dek = generate_data_encryption_key()
@@ -242,6 +246,7 @@ def _resolve_grantee_public_key(grantee: models.User) -> Optional[str]:
         return None
 
 
+# 功能说明：读取健康记录时解密真实内容。
 def _resolve_record_values(
     record: models.HealthData,
     private_key: Optional[str] = None,
@@ -302,6 +307,7 @@ def _resolve_record_values(
     return data_content, file_bytes, False
 
 
+# 功能说明：重新计算内容哈希并与链上存证比对。
 def _verify_record_onchain(
     record: models.HealthData,
     *,
@@ -321,7 +327,7 @@ def _verify_record_onchain(
     )
     if not source_payload:
         if not record.is_public:
-            return "locked", None, "私密数据未解锁，暂时无法完成链上校验"
+            return "locked", None, "私密数据未解锁或密文/密钥包可能已损坏，暂时无法完成链上校验"
         return "source_empty", None, "原始数据为空，无法完成链上校验"
 
     expected_hash = _hash_payload(source_payload)
@@ -440,6 +446,7 @@ def _ensure_record_dek_mode(
         record.data_content = None
 
 
+# 功能说明：上传并创建健康数据，同时完成加密和存证。
 @router.post("/records", response_model=schemas.HealthDataResponse)
 async def create_health_record(
     health_data: schemas.HealthDataCreate,
@@ -566,6 +573,7 @@ async def create_health_record(
     return _serialize_record(db_record, effective_private_key, current_user, onchain_warning=onchain_warning)
 
 
+# 功能说明：查询当前用户的健康记录列表。
 @router.get("/records", response_model=List[schemas.HealthDataResponse])
 async def get_health_records(
     skip: int = 0,
@@ -598,6 +606,7 @@ async def get_health_records(
     return [_serialize_record(item, effective_private_key, current_user) for item in records]
 
 
+# 功能说明：查询单条健康数据详情。
 @router.get("/records/{record_id}", response_model=schemas.HealthDataResponse)
 async def get_health_record(
     record_id: int,
@@ -627,6 +636,7 @@ async def get_health_record(
     return _serialize_record(record, effective_private_key, current_user)
 
 
+# 功能说明：更新健康数据并同步链上存证。
 @router.put("/records/{record_id}", response_model=schemas.HealthDataResponse)
 async def update_health_record(
     record_id: int,
@@ -860,6 +870,7 @@ async def get_record_grants(
     return [_serialize_grant(item, db) for item in grants]
 
 
+# 功能说明：为私密健康数据创建授权。
 @router.post("/records/{record_id}/grants", response_model=schemas.HealthDataGrantResponse)
 async def create_record_grant(
     record_id: int,
@@ -949,6 +960,7 @@ async def revoke_record_grant(
     return {"message": "撤销成功"}
 
 
+# 功能说明：查询授权给当前用户的私密数据。
 @router.get("/shared/records", response_model=List[schemas.HealthDataResponse])
 async def get_shared_health_records(
     skip: int = 0,

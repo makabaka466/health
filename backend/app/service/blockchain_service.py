@@ -122,6 +122,7 @@ class HealthDataChainService:
         except Exception:
             return None
 
+    # 功能说明：将健康数据哈希写入链上合约。
     def store_health_data(
         self,
         *,
@@ -148,6 +149,7 @@ class HealthDataChainService:
         result.pop("receipt", None)
         return result
 
+    # 功能说明：更新已有链上存证的数据哈希。
     def update_health_data(
         self,
         *,
@@ -174,6 +176,7 @@ class HealthDataChainService:
         result.pop("receipt", None)
         return result
 
+    # 功能说明：根据链上 ID 查询健康数据存证。
     def get_health_record(self, *, data_id_hex: str) -> dict[str, Any] | None:
         if not self.enabled:
             return None

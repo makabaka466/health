@@ -309,6 +309,7 @@ def get_public_records(db: Session, user_id: int, limit: Optional[int] = MAX_HOM
     return query.all()
 
 
+# 功能说明：汇总公开健康数据作为 AI 上下文。
 def build_public_health_context(db: Session, user: models.User, limit: int = MAX_CONTEXT_RECORDS) -> tuple[str, int]:
     contexts: list[str] = []
     public_records = get_public_records(db, user.id, limit)
@@ -366,6 +367,7 @@ def build_private_context_options(db: Session, user: models.User) -> list[schema
     return items
 
 
+# 功能说明：解密选中的私密数据作为 AI 上下文。
 def build_private_context(db: Session, user: models.User, selected_ids: list[str]) -> tuple[str, int]:
     selected = [str(item).strip() for item in (selected_ids or []) if str(item).strip()]
     if not selected:

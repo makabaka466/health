@@ -116,6 +116,7 @@ def _keyword_rag_context(db: Session, question: str, terms: list[str]) -> tuple[
     return "\n\n".join(item[3] for item in chosen), [item[2] for item in chosen]
 
 
+# 功能说明：检索知识库并构造 RAG 上下文。
 def _rag_context(db: Session, question: str) -> tuple[str, list[str]]:
     terms = _query_terms(question)
     if not terms:
@@ -175,6 +176,7 @@ def _history_session_title(message: models.ChatMessage) -> str:
     return compact[:18] + ("..." if len(compact) > 18 else "")
 
 
+# 功能说明：组装发送给大模型的提示词。
 def _prompt(
     *,
     user_message: str,
@@ -355,6 +357,7 @@ async def _generate_home_advice_payload(db: Session, current_user: models.User) 
     return save_user_home_advice_payload(db, current_user, final_payload)
 
 
+# 功能说明：构造请求 Ollama 的 HTTP 参数。
 def _ollama_request(system_prompt: str, user_prompt: str, stream: bool, options_override: dict | None = None) -> urllib.request.Request:
     options = {
         "temperature": settings.OLLAMA_TEMPERATURE,
@@ -381,6 +384,7 @@ def _ollama_request(system_prompt: str, user_prompt: str, stream: bool, options_
     )
 
 
+# 功能说明：非流式调用 Ollama 并返回完整回复。
 def _call_ollama(system_prompt: str, user_prompt: str, options_override: dict | None = None) -> str:
     try:
         with urllib.request.urlopen(_ollama_request(system_prompt, user_prompt, False, options_override), timeout=settings.OLLAMA_TIMEOUT_SECONDS) as response:
@@ -398,6 +402,7 @@ def _call_ollama(system_prompt: str, user_prompt: str, options_override: dict | 
     return reply
 
 
+# 功能说明：流式调用 Ollama 并逐段读取输出。
 def _stream_ollama(system_prompt: str, user_prompt: str, options_override: dict | None = None):
     try:
         with urllib.request.urlopen(_ollama_request(system_prompt, user_prompt, True, options_override), timeout=settings.OLLAMA_TIMEOUT_SECONDS) as response:
@@ -482,6 +487,7 @@ async def get_private_context_options(
     return schemas.AiPrivateContextOptionsResponse(items=build_private_context_options(db, current_user))
 
 
+# 功能说明：处理 AI 问答并保存对话记录。
 @router.post("/chat", response_model=schemas.ChatResponse)
 async def chat_with_ai(
     message: schemas.ChatMessage,
@@ -540,6 +546,7 @@ async def chat_with_ai(
     )
 
 
+# 功能说明：通过 SSE 流式返回 AI 问答内容。
 @router.post("/chat/stream")
 async def chat_with_ai_stream(
     message: schemas.ChatMessage,

@@ -74,6 +74,7 @@ def _ensure_blockchain_ready_for_registration() -> None:
         )
 
 
+# 功能说明：生成登录令牌响应。
 def _build_login_token(user: models.User, expires_minutes: int) -> dict:
     access_token_expires = timedelta(minutes=expires_minutes)
     access_token = create_access_token(data={"sub": user.username}, expires_delta=access_token_expires)
@@ -85,6 +86,7 @@ def _build_login_token(user: models.User, expires_minutes: int) -> dict:
     }
 
 
+# 功能说明：注册用户并初始化钱包密钥。
 @router.post("/register", response_model=UserRegisterResponse)
 async def register(user: UserCreate, db: Session = Depends(get_db)):
     _ensure_not_maintenance_mode(db)
@@ -113,6 +115,7 @@ async def register(user: UserCreate, db: Session = Depends(get_db)):
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
 
 
+# 功能说明：校验账号密码并返回访问令牌。
 @router.post("/login", response_model=Token)
 async def login(form_data: OAuth2PasswordRequestForm = Depends(), db: Session = Depends(get_db)):
     _ensure_not_maintenance_mode(db)
@@ -211,6 +214,7 @@ async def social_profile_complete(payload: SocialProfileCompleteRequest, db: Ses
     return _build_login_token(user, session_minutes)
 
 
+# 功能说明：处理管理员登录。
 @router.post("/admin/login", response_model=Token)
 async def admin_login(form_data: OAuth2PasswordRequestForm = Depends(), db: Session = Depends(get_db)):
     auth_service = AuthService(db)
